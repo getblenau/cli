@@ -1,9 +1,138 @@
 package main
 
-import "testing"
+import (
+	"bytes"
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"runtime"
+	"strings"
+	"testing"
+	"unicode/utf8"
 
-// TestStdoutEncoding will assert that stdout is UTF-8 NFC, no BOM, on every
-// supported platform once setUTF8Stdout() is fully implemented.
-func TestStdoutEncoding(t *testing.T) {
-	t.Skip("placeholder — implement when setUTF8Stdout() is wired up")
+	"golang.org/x/text/unicode/norm"
+)
+
+// buildBin compiles the CLI into a temp binary and returns its path.
+func buildBin(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	bin := filepath.Join(dir, "blenau")
+	if runtime.GOOS == "windows" {
+		bin += ".exe"
+	}
+	cmd := exec.Command("go", "build", "-o", bin, ".")
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		t.Fatalf("go build: %v", err)
+	}
+	return bin
+}
+
+// TestStdoutUTF8 forks the binary with a query that round-trips through the
+// help text path (which contains non-ASCII em-dash) and asserts stdout is
+// valid UTF-8 NFC.
+func TestStdoutUTF8(t *testing.T) {
+	bin := buildBin(t)
+	out, err := exec.Command(bin, "--help").Output()
+	if err != nil {
+		t.Fatalf("run --help: %v", err)
+	}
+	if !utf8.Valid(out) {
+		t.Fatalf("stdout is not valid UTF-8: %q", out)
+	}
+	if !bytes.Equal(out, norm.NFC.Bytes(out)) {
+		t.Fatalf("stdout is not NFC-normalized")
+	}
+	// Sanity: the long help string contains an em-dash.
+	if !bytes.Contains(out, []byte("—")) {
+		t.Fatalf("expected em-dash in --help output, got: %s", out)
+	}
+}
+
+// TestAgentManifest runs --agent-manifest and asserts shape.
+func TestAgentManifest(t *testing.T) {
+	bin := buildBin(t)
+	out, err := exec.Command(bin, "--agent-manifest").Output()
+	if err != nil {
+		t.Fatalf("run --agent-manifest: %v", err)
+	}
+	var m struct {
+		Name     string `json:"name"`
+		Version  string `json:"version"`
+		Commands []struct {
+			Name  string `json:"name"`
+			Flags []struct {
+				Name     string `json:"name"`
+				Required bool   `json:"required"`
+			} `json:"flags"`
+		} `json:"commands"`
+		GlobalFlags []map[string]interface{} `json:"global_flags"`
+	}
+	if err := json.Unmarshal(out, &m); err != nil {
+		t.Fatalf("parse manifest JSON: %v\noutput: %s", err, out)
+	}
+	if m.Name != "blenau" {
+		t.Fatalf("manifest.name = %q, want blenau", m.Name)
+	}
+	if m.Version == "" {
+		t.Fatalf("manifest.version is empty")
+	}
+	got := map[string]bool{}
+	for _, c := range m.Commands {
+		got[c.Name] = true
+	}
+	if !got["login"] {
+		t.Fatalf("manifest missing 'login' command: %s", out)
+	}
+	if !got["search"] {
+		t.Fatalf("manifest missing 'search' command: %s", out)
+	}
+	// login.token must be required.
+	for _, c := range m.Commands {
+		if c.Name == "login" {
+			foundRequired := false
+			for _, f := range c.Flags {
+				if f.Name == "token" && f.Required {
+					foundRequired = true
+				}
+			}
+			if !foundRequired {
+				t.Fatalf("login.token must be required")
+			}
+		}
+	}
+}
+
+// TestSearchJSONOutput is a smoke test against the live API. Skipped without a
+// token in BLENAU_TEST_TOKEN.
+func TestSearchJSONOutput(t *testing.T) {
+	tk := os.Getenv("BLENAU_TEST_TOKEN")
+	if tk == "" {
+		t.Skip("BLENAU_TEST_TOKEN not set; skipping live API smoke test")
+	}
+	bin := buildBin(t)
+	// Point config at a temp dir.
+	tmp := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", tmp)
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", tmp)
+	}
+	if err := exec.Command(bin, "login", "--token", tk).Run(); err != nil {
+		t.Fatalf("login: %v", err)
+	}
+	out, err := exec.Command(bin, "search", "test", "--json").Output()
+	if err != nil {
+		t.Fatalf("search: %v", err)
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if _, ok := resp["results"]; !ok {
+		t.Fatalf("missing 'results' field: %s", out)
+	}
+	_ = strings.TrimSpace
 }

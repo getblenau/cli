@@ -9,7 +9,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 
@@ -17,16 +16,7 @@ import (
 )
 
 // version is overridden at build time via -ldflags "-X main.version=..."
-var version = "0.0.0-dev"
-
-// setUTF8Stdout forces stdout to UTF-8 on Windows (code page 65001).
-//
-// TODO: implement properly with golang.org/x/sys/windows.SetConsoleOutputCP(65001)
-// behind a build tag (//go:build windows). Currently a no-op stub; will be
-// wired in alongside the first real subcommand that emits non-ASCII output.
-func setUTF8Stdout() {
-	// no-op for now
-}
+var version = "0.1.0"
 
 func main() {
 	setUTF8Stdout()
@@ -37,7 +27,10 @@ func main() {
 	// even when no subcommand is given.
 	for _, a := range os.Args[1:] {
 		if a == "--agent-manifest" {
-			emitAgentManifest(root, version)
+			if err := cmd.EmitManifest(os.Stdout, root, version); err != nil {
+				fmt.Fprintln(os.Stderr, err)
+				os.Exit(1)
+			}
 			return
 		}
 	}
@@ -46,36 +39,4 @@ func main() {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
-}
-
-// emitAgentManifest writes a JSON contract describing the CLI surface.
-func emitAgentManifest(root interface{ Name() string }, ver string) {
-	type flagSpec struct {
-		Name  string `json:"name"`
-		Type  string `json:"type"`
-		Usage string `json:"usage"`
-	}
-	type cmdSpec struct {
-		Name  string     `json:"name"`
-		Short string     `json:"short"`
-		Flags []flagSpec `json:"flags"`
-	}
-	manifest := struct {
-		Name     string    `json:"name"`
-		Version  string    `json:"version"`
-		Commands []cmdSpec `json:"commands"`
-		Flags    []flagSpec `json:"flags"`
-	}{
-		Name:    "blenau",
-		Version: ver,
-		Commands: []cmdSpec{},
-		Flags: []flagSpec{
-			{Name: "json", Type: "bool", Usage: "structured JSON output"},
-			{Name: "agent-manifest", Type: "bool", Usage: "emit JSON contract and exit"},
-			{Name: "version", Type: "bool", Usage: "print version and exit"},
-		},
-	}
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(manifest)
 }

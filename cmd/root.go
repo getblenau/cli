@@ -18,10 +18,13 @@ func NewRootCmd(version string) *cobra.Command {
 		SilenceUsage: true,
 	}
 
-	root.PersistentFlags().Bool("json", false, "emit structured JSON output")
+	root.PersistentFlags().Bool("json", false, "Emit JSON output (default for non-TTY).")
 	// --agent-manifest is intercepted in main() before Cobra parsing;
 	// declared here so it appears in --help.
 	root.PersistentFlags().Bool("agent-manifest", false, "emit a JSON contract describing the CLI surface and exit")
+
+	root.AddCommand(NewLoginCmd())
+	root.AddCommand(NewSearchCmd())
 
 	return root
 }
