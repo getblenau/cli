@@ -1,0 +1,12 @@
+# Default to LF on checkout & in repo, regardless of host platform.
+# Prevents CRLF corruption of shell scripts when checked out on Windows
+# and deployed to Linux EC2 (where \r in scripts is a fatal syntax error).
+* text=auto eol=lf
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.zip binary
+*.tar.gz binary
