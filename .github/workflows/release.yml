@@ -1,0 +1,45 @@
+name: release
+
+# Release workflow: triggered on a v*.*.* tag, runs goreleaser to build
+# cross-platform binaries and (optionally) publish a Homebrew formula and
+# Scoop manifest to getblenau/homebrew-tap and getblenau/scoop-bucket.
+#
+# To enable Homebrew/Scoop publish, add a repo or org secret named
+# HOMEBREW_TAP_GITHUB_TOKEN with a PAT that has `contents: write` on those
+# repos. Without it, goreleaser will skip those steps (skip_upload: auto).
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          check-latest: true
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: "~> v2"
+          args: release --clean
+          workdir: .
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Optional: set this secret to publish the Homebrew tap and Scoop
+          # bucket. If unset, goreleaser will skip those steps.
+          HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}

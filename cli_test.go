@@ -3,6 +3,8 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -135,4 +137,73 @@ func TestSearchJSONOutput(t *testing.T) {
 		t.Fatalf("missing 'results' field: %s", out)
 	}
 	_ = strings.TrimSpace
+}
+
+// TestReposJSON spins up a fake API and asserts the CLI prints the JSON body.
+func TestReposJSON(t *testing.T) {
+	bin := buildBin(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/github/repos" {
+			http.Error(w, "not found", 404)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"repos":[{"name":"api","full_name":"getblenau/api","path_prefix":"api/","private":true}]}`))
+	}))
+	defer srv.Close()
+	tmp := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", tmp)
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", tmp)
+	}
+	t.Setenv("BLENAU_API_URL", srv.URL)
+	t.Setenv("BLENAU_API_TOKEN", "test")
+	out, err := exec.Command(bin, "repos", "--json").Output()
+	if err != nil {
+		t.Fatalf("repos: %v", err)
+	}
+	var resp map[string]interface{}
+	if err := json.Unmarshal(out, &resp); err != nil {
+		t.Fatalf("invalid JSON: %v\n%s", err, out)
+	}
+	if _, ok := resp["repos"]; !ok {
+		t.Fatalf("missing 'repos' field: %s", out)
+	}
+}
+
+// TestDocsGet404 asserts non-2xx error path: stderr has detail, exit code 1.
+func TestDocsGet404(t *testing.T) {
+	bin := buildBin(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(404)
+		_, _ = w.Write([]byte(`{"detail":"Not found"}`))
+	}))
+	defer srv.Close()
+	tmp := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", tmp)
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", tmp)
+	}
+	t.Setenv("BLENAU_API_URL", srv.URL)
+	t.Setenv("BLENAU_API_TOKEN", "test")
+	cmd := exec.Command(bin, "docs", "get", "notfound")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	err := cmd.Run()
+	if err == nil {
+		t.Fatalf("expected non-zero exit")
+	}
+	if exitErr, ok := err.(*exec.ExitError); ok {
+		if exitErr.ExitCode() != 1 {
+			t.Fatalf("expected exit code 1, got %d", exitErr.ExitCode())
+		}
+	} else {
+		t.Fatalf("unexpected error type: %T %v", err, err)
+	}
+	if !bytes.Contains(stderr.Bytes(), []byte("Not found")) {
+		t.Fatalf("expected 'Not found' in stderr, got: %s", stderr.String())
+	}
 }

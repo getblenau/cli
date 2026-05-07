@@ -25,6 +25,11 @@ func NewRootCmd(version string) *cobra.Command {
 
 	root.AddCommand(NewLoginCmd())
 	root.AddCommand(NewSearchCmd())
+	root.AddCommand(NewReposCmd())
+	root.AddCommand(NewDocsCmd())
+	root.AddCommand(NewIngestCmd())
+	root.AddCommand(NewEditSectionCmd())
+	root.AddCommand(NewAuditCmd())
 
 	return root
 }

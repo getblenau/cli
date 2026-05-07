@@ -43,12 +43,18 @@ type Manifest struct {
 
 // requiredFlags lists flag names that are required per command.
 var requiredFlags = map[string][]string{
-	"login": {"token"},
+	"login":        {"token"},
+	"ingest":       {"path", "title"},
+	"edit-section": {"path", "heading", "content-file", "version"},
+	"section":      {"heading"},
 }
 
 // requiredArgs lists arg names per command (cobra doesn't carry names).
 var commandArgs = map[string][]ArgSpec{
-	"search": {{Name: "query", Type: "string", Required: true}},
+	"search":    {{Name: "query", Type: "string", Required: true}},
+	"get":       {{Name: "path", Type: "string", Required: true}},
+	"structure": {{Name: "path", Type: "string", Required: true}},
+	"section":   {{Name: "path", Type: "string", Required: true}},
 }
 
 func flagType(f *pflag.Flag) string {
@@ -134,6 +140,22 @@ func BuildManifest(root *cobra.Command, version string) Manifest {
 	m.GlobalFlags = collectFlags(root.PersistentFlags(), nil)
 	for _, sub := range root.Commands() {
 		if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" {
+			continue
+		}
+		if sub.HasSubCommands() {
+			for _, child := range sub.Commands() {
+				if child.Hidden || child.Name() == "help" {
+					continue
+				}
+				name := sub.Name() + " " + child.Name()
+				spec := CommandSpec{
+					Name:        name,
+					Description: strings.TrimSpace(child.Short),
+					Args:        commandArgs[child.Name()],
+					Flags:       collectFlags(child.Flags(), requiredFlags[child.Name()]),
+				}
+				m.Commands = append(m.Commands, spec)
+			}
 			continue
 		}
 		spec := CommandSpec{
