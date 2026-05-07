@@ -57,37 +57,3 @@ release:
     name: cli
   draft: false
   prerelease: auto
-
-brews:
-  - name: blenau
-    repository:
-      owner: getblenau
-      name: homebrew-tap
-      token: "{{ with .Env.HOMEBREW_TAP_GITHUB_TOKEN }}{{ . }}{{ end }}"
-    directory: Formula
-    homepage: "https://github.com/getblenau/cli"
-    description: "Blenau CLI - agent-first command-line interface for the Blenau platform."
-    license: "MIT"
-    skip_upload: '{{ if eq .Env.HOMEBREW_TAP_GITHUB_TOKEN "" }}true{{ else }}false{{ end }}'
-    commit_author:
-      name: blenau-bot
-      email: bot@blenau.com
-    install: |
-      bin.install "blenau"
-    test: |
-      system "#{bin}/blenau", "--version"
-
-scoops:
-  - name: blenau
-    repository:
-      owner: getblenau
-      name: scoop-bucket
-      token: "{{ with .Env.HOMEBREW_TAP_GITHUB_TOKEN }}{{ . }}{{ end }}"
-    directory: bucket
-    homepage: "https://github.com/getblenau/cli"
-    description: "Blenau CLI - agent-first command-line interface for the Blenau platform."
-    license: "MIT"
-    skip_upload: '{{ if eq .Env.HOMEBREW_TAP_GITHUB_TOKEN "" }}true{{ else }}false{{ end }}'
-    commit_author:
-      name: blenau-bot
-      email: bot@blenau.com
