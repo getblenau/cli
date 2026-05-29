@@ -17,8 +17,10 @@ import (
 	"golang.org/x/text/unicode/norm"
 )
 
-// maxAssetBytes is the client-side hard cap on uploadable asset size (1 MiB).
-const maxAssetBytes = 1 * 1024 * 1024
+// maxAssetBytes is the client-side hard cap on uploadable asset size (1 MB).
+// Matches the server cap (1,000,000 B), which sits just below nginx's 1 MiB
+// default so the app's clean 413 always wins.
+const maxAssetBytes = 1_000_000
 
 // imageUploadGuidance MUST match the server message; keep it in sync.
 const imageUploadGuidance = `Images must be 1 MB or smaller. Optimize locally before uploading (do not read the file into context):
