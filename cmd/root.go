@@ -30,6 +30,7 @@ func NewRootCmd(version string) *cobra.Command {
 	root.AddCommand(NewIngestCmd())
 	root.AddCommand(NewEditSectionCmd())
 	root.AddCommand(NewAuditCmd())
+	root.AddCommand(NewAssetsCmd())
 
 	return root
 }
