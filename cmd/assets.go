@@ -7,6 +7,7 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -37,6 +38,9 @@ func NewAssetsCmd() *cobra.Command {
 	}
 	c.PersistentFlags().Bool("json", false, "Emit JSON instead of human format.")
 	c.AddCommand(newAssetsUploadCmd())
+	c.AddCommand(newAssetsListCmd())
+	c.AddCommand(newAssetsVerifyCmd())
+	c.AddCommand(newAssetsDeleteCmd())
 	return c
 }
 
@@ -53,6 +57,7 @@ func newAssetsUploadCmd() *cobra.Command {
 			insertAt, _ := cmd.Flags().GetString("insert-at")
 			position, _ := cmd.Flags().GetString("position")
 			compress, _ := cmd.Flags().GetBool("compress")
+			overwrite, _ := cmd.Flags().GetBool("overwrite")
 			if doc == "" {
 				return fmt.Errorf("--doc is required")
 			}
@@ -105,7 +110,7 @@ func newAssetsUploadCmd() *cobra.Command {
 				defer cleanup()
 			}
 
-			raw, status, err := uploadAsset(uploadPath, filename, doc, alt, insertAt, position)
+			raw, status, err := uploadAsset(uploadPath, filename, doc, alt, insertAt, position, overwrite)
 			if err != nil {
 				return err
 			}
@@ -147,8 +152,83 @@ func newAssetsUploadCmd() *cobra.Command {
 	c.Flags().String("insert-at", "", "Heading to embed the image under (e.g. \"## Setup\"). Empty = don't embed, just return markdown.")
 	c.Flags().String("position", "after", "Where to embed relative to the heading: after|before|append|prepend.")
 	c.Flags().Bool("compress", false, "If the file is over the limit, auto-compress with a local tool (magick/cwebp) before upload.")
+	c.Flags().Bool("overwrite", false, "Overwrite an existing asset of the same name instead of disambiguating with a hash.")
 	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
 	_ = c.MarkFlagRequired("doc")
+	return c
+}
+
+func newAssetsListCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "list",
+		Short: "List a doc's image references and whether each resolves in GitHub.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doc, _ := cmd.Flags().GetString("doc")
+			if doc == "" {
+				return fmt.Errorf("--doc is required")
+			}
+			raw, status, err := apiCall("GET", "/assets/list?doc_path="+url.QueryEscape(doc), nil)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().String("doc", "", "Tenant-level doc path. REQUIRED.")
+	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
+	_ = c.MarkFlagRequired("doc")
+	return c
+}
+
+func newAssetsVerifyCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "verify",
+		Short: "Verify one asset reference resolves (i.e. will render).",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doc, _ := cmd.Flags().GetString("doc")
+			rel, _ := cmd.Flags().GetString("path")
+			if doc == "" || rel == "" {
+				return fmt.Errorf("--doc and --path are required")
+			}
+			p := "/assets/resolve?doc_path=" + url.QueryEscape(doc) + "&relative_path=" + url.QueryEscape(rel)
+			raw, status, err := apiCall("GET", p, nil)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().String("doc", "", "Tenant-level doc path. REQUIRED.")
+	c.Flags().String("path", "", "Asset path as written in the markdown (e.g. assets/x.webp). REQUIRED.")
+	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
+	_ = c.MarkFlagRequired("doc")
+	_ = c.MarkFlagRequired("path")
+	return c
+}
+
+func newAssetsDeleteCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "delete",
+		Short: "Delete an asset file from the repo (does not rewrite references).",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doc, _ := cmd.Flags().GetString("doc")
+			rel, _ := cmd.Flags().GetString("path")
+			if doc == "" || rel == "" {
+				return fmt.Errorf("--doc and --path are required")
+			}
+			p := "/assets/file?doc_path=" + url.QueryEscape(doc) + "&relative_path=" + url.QueryEscape(rel)
+			raw, status, err := apiCall("DELETE", p, nil)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().String("doc", "", "Tenant-level doc path. REQUIRED.")
+	c.Flags().String("path", "", "Asset path as written in the markdown (e.g. assets/x.webp). REQUIRED.")
+	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
+	_ = c.MarkFlagRequired("doc")
+	_ = c.MarkFlagRequired("path")
 	return c
 }
 
@@ -185,7 +265,7 @@ func compressImage(src string) (string, error) {
 
 // uploadAsset POSTs a multipart/form-data request to /assets/upload-binary.
 // Returns (response bytes, status code, error).
-func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition string) ([]byte, int, error) {
+func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition string, overwrite bool) ([]byte, int, error) {
 	apiURL, token, err := resolveAuth()
 	if err != nil {
 		return nil, 0, err
@@ -212,6 +292,9 @@ func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition string)
 		"alt_text":        alt,
 		"insert_heading":  insertHeading,
 		"insert_position": insertPosition,
+	}
+	if overwrite {
+		fields["overwrite"] = "true"
 	}
 	for k, v := range fields {
 		if err := mw.WriteField(k, v); err != nil {
