@@ -17,7 +17,7 @@ func NewLoginCmd() *cobra.Command {
 			if token == "" {
 				return fmt.Errorf("--token is required.\n" +
 					"Browser-based login coming in a later release. Use --token <tk> for now.\n" +
-					"See: https://docs.blenau.com/cli/login (TODO: real URL)")
+					"See: https://docs.blenau.com/cli/")
 			}
 			cfg := &Config{APIURL: DefaultAPIURL, Token: token}
 			path, err := SaveConfig(cfg)
