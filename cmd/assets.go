@@ -56,6 +56,7 @@ func newAssetsUploadCmd() *cobra.Command {
 			name, _ := cmd.Flags().GetString("name")
 			insertAt, _ := cmd.Flags().GetString("insert-at")
 			position, _ := cmd.Flags().GetString("position")
+			after, _ := cmd.Flags().GetString("after")
 			compress, _ := cmd.Flags().GetBool("compress")
 			overwrite, _ := cmd.Flags().GetBool("overwrite")
 			if doc == "" {
@@ -110,7 +111,7 @@ func newAssetsUploadCmd() *cobra.Command {
 				defer cleanup()
 			}
 
-			raw, status, err := uploadAsset(uploadPath, filename, doc, alt, insertAt, position, overwrite)
+			raw, status, err := uploadAsset(uploadPath, filename, doc, alt, insertAt, position, after, overwrite)
 			if err != nil {
 				return err
 			}
@@ -129,7 +130,11 @@ func newAssetsUploadCmd() *cobra.Command {
 				}
 				if ins, ok := m["insert"].(map[string]interface{}); ok {
 					if embedded, ok := ins["embedded"].(bool); ok && embedded {
-						if h, ok := ins["heading"].(string); ok && h != "" {
+						h, _ := ins["placed_under_heading"].(string)
+						if h == "" {
+							h, _ = ins["heading"].(string)
+						}
+						if h != "" {
 							fmt.Fprintf(w, "embedded under %s\n", norm.NFC.String(h))
 						} else {
 							fmt.Fprintln(w, "embedded")
@@ -151,6 +156,7 @@ func newAssetsUploadCmd() *cobra.Command {
 	c.Flags().String("name", "", "Override the stored filename (default: base name of <file>).")
 	c.Flags().String("insert-at", "", "Heading to embed the image under (e.g. \"## Setup\"). Empty = don't embed, just return markdown.")
 	c.Flags().String("position", "after", "Where to embed relative to the heading: after|before|append|prepend.")
+	c.Flags().String("after", "", "Anchor the image right after the paragraph (within --insert-at) whose text contains this verbatim snippet.")
 	c.Flags().Bool("compress", false, "If the file is over the limit, auto-compress with a local tool (magick/cwebp) before upload.")
 	c.Flags().Bool("overwrite", false, "Overwrite an existing asset of the same name instead of disambiguating with a hash.")
 	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
@@ -265,7 +271,7 @@ func compressImage(src string) (string, error) {
 
 // uploadAsset POSTs a multipart/form-data request to /assets/upload-binary.
 // Returns (response bytes, status code, error).
-func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition string, overwrite bool) ([]byte, int, error) {
+func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition, insertAfterText string, overwrite bool) ([]byte, int, error) {
 	apiURL, token, err := resolveAuth()
 	if err != nil {
 		return nil, 0, err
@@ -290,8 +296,9 @@ func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition string,
 		"doc_path":        doc,
 		"filename":        filename,
 		"alt_text":        alt,
-		"insert_heading":  insertHeading,
-		"insert_position": insertPosition,
+		"insert_heading":    insertHeading,
+		"insert_position":   insertPosition,
+		"insert_after_text": insertAfterText,
 	}
 	if overwrite {
 		fields["overwrite"] = "true"
