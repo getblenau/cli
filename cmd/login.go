@@ -19,7 +19,16 @@ func NewLoginCmd() *cobra.Command {
 					"Browser-based login coming in a later release. Use --token <tk> for now.\n" +
 					"See: https://docs.blenau.com/cli/")
 			}
-			cfg := &Config{APIURL: DefaultAPIURL, Token: token}
+			// Merge, don't clobber: preserve a previously-set api_url (and any
+			// future fields) instead of resetting the whole config on login.
+			cfg, err := LoadConfig()
+			if err != nil || cfg == nil {
+				cfg = &Config{APIURL: DefaultAPIURL}
+			}
+			if cfg.APIURL == "" {
+				cfg.APIURL = DefaultAPIURL
+			}
+			cfg.Token = token
 			path, err := SaveConfig(cfg)
 			if err != nil {
 				return fmt.Errorf("save config: %w", err)
