@@ -243,6 +243,21 @@ func TestIdentityLaneInjectsActiveWorkspace(t *testing.T) {
 	}
 }
 
+func TestUpdateCacheFreshShortCircuitsNetwork(t *testing.T) {
+	isolateEnv(t)
+	// Point the update check at an unreachable host so any network attempt fails
+	// loudly; a fresh cache must be used WITHOUT touching the network.
+	p, _ := updateCachePath()
+	_ = os.MkdirAll(filepath.Dir(p), 0o700)
+	data, _ := json.Marshal(updateCache{CheckedAt: time.Now().Unix(), LatestVersion: "v9.9.9"})
+	if err := os.WriteFile(p, data, 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := cachedLatestRelease(); got != "v9.9.9" {
+		t.Errorf("a fresh cache should be returned without a network call, got %q", got)
+	}
+}
+
 // TestNoRawHTTPOutsideHTTPClient enforces the single-chokepoint rule (SPEC 3
 // §6): no cmd/*.go may build its own http.NewRequest — otherwise the workspace
 // selector/guard/echo can be bypassed.
@@ -256,7 +271,9 @@ func TestNoRawHTTPOutsideHTTPClient(t *testing.T) {
 		if !strings.HasSuffix(name, ".go") || strings.HasSuffix(name, "_test.go") {
 			continue
 		}
-		if name == "httpclient.go" || name == "oidc.go" { // the sanctioned HTTP sites
+		// Sanctioned HTTP sites: the API chokepoint, the OIDC/device flow, and
+		// the GitHub release check (a non-Blenau, unauthenticated call).
+		if name == "httpclient.go" || name == "oidc.go" || name == "updatecheck.go" {
 			continue
 		}
 		data, err := os.ReadFile(filepath.Join(".", name))

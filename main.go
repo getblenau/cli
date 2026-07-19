@@ -16,7 +16,7 @@ import (
 )
 
 // version is overridden at build time via -ldflags "-X main.version=..."
-var version = "0.4.0"
+var version = "0.4.1"
 
 func main() {
 	setUTF8Stdout()
@@ -35,7 +35,11 @@ func main() {
 		}
 	}
 
-	if err := root.Execute(); err != nil {
+	err := root.Execute()
+	// After the command has produced its output: a non-intrusive "new version"
+	// notice on stderr (only for interactive humans; scripts/agents never see it).
+	cmd.NotifyIfUpdateAvailable(version, os.Stderr)
+	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
