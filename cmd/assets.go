@@ -6,13 +6,11 @@ import (
 	"fmt"
 	"io"
 	"mime/multipart"
-	"net/http"
 	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/text/unicode/norm"
@@ -272,11 +270,6 @@ func compressImage(src string) (string, error) {
 // uploadAsset POSTs a multipart/form-data request to /assets/upload-binary.
 // Returns (response bytes, status code, error).
 func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition, insertAfterText string, overwrite bool) ([]byte, int, error) {
-	apiURL, token, err := resolveAuth()
-	if err != nil {
-		return nil, 0, err
-	}
-
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, 0, fmt.Errorf("open file: %w", err)
@@ -293,9 +286,9 @@ func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition, insert
 		return nil, 0, fmt.Errorf("read file: %w", err)
 	}
 	fields := map[string]string{
-		"doc_path":        doc,
-		"filename":        filename,
-		"alt_text":        alt,
+		"doc_path":          doc,
+		"filename":          filename,
+		"alt_text":          alt,
 		"insert_heading":    insertHeading,
 		"insert_position":   insertPosition,
 		"insert_after_text": insertAfterText,
@@ -312,21 +305,7 @@ func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition, insert
 		return nil, 0, err
 	}
 
-	req, err := http.NewRequest("POST", apiURL+"/assets/upload-binary", &buf)
-	if err != nil {
-		return nil, 0, err
-	}
-	req.Header.Set("Content-Type", mw.FormDataContentType())
-	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{Timeout: 120 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, 0, fmt.Errorf("call %s: %w", req.URL, err)
-	}
-	defer resp.Body.Close()
-	raw, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, resp.StatusCode, err
-	}
-	return raw, resp.StatusCode, nil
+	// Route through the shared chokepoint so the identity-lane workspace
+	// selector + write guard + echo check apply to asset uploads too.
+	return apiRequest("POST", "/assets/upload-binary", &buf, mw.FormDataContentType())
 }

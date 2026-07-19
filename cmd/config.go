@@ -9,9 +9,30 @@ import (
 )
 
 // Config is the on-disk CLI configuration.
+//
+// Two auth lanes share this file. `Token` is the SERVICE lane (a long-lived
+// blenau_tk_, great for CI/automation). `Identity` + `ActiveWorkspace` are the
+// IDENTITY lane (device-flow login): the refresh token lives in the OS keychain,
+// never here — only the short-lived access token is cached (this file is 0600).
 type Config struct {
-	APIURL string `json:"api_url"`
-	Token  string `json:"token"`
+	APIURL          string         `json:"api_url"`
+	Token           string         `json:"token,omitempty"`
+	Identity        *IdentityCache `json:"identity,omitempty"`
+	ActiveWorkspace *WorkspaceRef  `json:"active_workspace,omitempty"`
+}
+
+// IdentityCache caches the short-lived access token so we don't hit the IdP on
+// every command. The refresh token is NEVER stored here (keychain only).
+type IdentityCache struct {
+	AccessToken string `json:"access_token"`
+	ExpiresAt   int64  `json:"expires_at"` // unix seconds
+}
+
+// WorkspaceRef is a resolved workspace (identity lane active workspace).
+type WorkspaceRef struct {
+	ID   string `json:"id"`
+	Slug string `json:"slug"`
+	Name string `json:"name"`
 }
 
 // DefaultAPIURL is the production Blenau API base URL.
