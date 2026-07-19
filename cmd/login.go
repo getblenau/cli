@@ -10,14 +10,17 @@ import (
 func NewLoginCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "login",
-		Short: "Save an API token to local config.",
-		Long:  "Save a Blenau API token to the local CLI config file (mode 0600).",
+		Short: "Log in with your browser, or save an API token (--token).",
+		Long: "Log in to Blenau.\n\n" +
+			"  blenau login            Browser login (most secure; identity stored in the OS keychain).\n" +
+			"  blenau login --token X  Save a service token blenau_tk_ (best for CI/automation).\n\n" +
+			"See: https://docs.blenau.com/cli/",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			token, _ := cmd.Flags().GetString("token")
 			if token == "" {
-				return fmt.Errorf("--token is required.\n" +
-					"Browser-based login coming in a later release. Use --token <tk> for now.\n" +
-					"See: https://docs.blenau.com/cli/")
+				// Browser device flow — identity lane. Progress on stderr so
+				// stdout stays clean for scripting.
+				return loginDeviceFlow(cmd.ErrOrStderr())
 			}
 			// Merge, don't clobber: preserve a previously-set api_url (and any
 			// future fields) instead of resetting the whole config on login.

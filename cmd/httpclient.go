@@ -3,11 +3,11 @@ package cmd
 import (
 	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -20,39 +20,81 @@ const envAPIURL = "BLENAU_API_URL"
 // envAPIToken allows overriding the API token from env.
 const envAPIToken = "BLENAU_API_TOKEN"
 
-// resolveAuth returns (apiURL, token, err).
-func resolveAuth() (string, string, error) {
-	apiURL := os.Getenv(envAPIURL)
-	token := os.Getenv(envAPIToken)
-	if apiURL != "" && token != "" {
-		return apiURL, token, nil
+// envAgentToken is a synonym for the service token (parity with @blenau/mcp).
+const envAgentToken = "BLENAU_AGENT_TOKEN"
+
+// authInfo is the resolved auth for a call, plus which lane it is.
+type authInfo struct {
+	apiURL       string
+	token        string
+	identityLane bool // true = device-flow identity (workspace selector allowed)
+}
+
+// serviceToken returns a pinned service credential if present (env or config).
+func serviceToken() string {
+	if t := os.Getenv(envAPIToken); t != "" {
+		return t
 	}
-	cfg, err := LoadConfig()
-	if errors.Is(err, os.ErrNotExist) {
-		if token == "" {
-			return "", "", fmt.Errorf("not logged in: run 'blenau login --token <tk>' first")
+	if t := os.Getenv(envAgentToken); t != "" {
+		return t
+	}
+	if cfg, _ := LoadConfig(); cfg != nil {
+		return cfg.Token
+	}
+	return ""
+}
+
+func resolveAPIURL() string {
+	if u := os.Getenv(envAPIURL); u != "" {
+		return u
+	}
+	if cfg, _ := LoadConfig(); cfg != nil && cfg.APIURL != "" {
+		return cfg.APIURL
+	}
+	return DefaultAPIURL
+}
+
+// resolveAuth picks the lane. The SERVICE lane wins whenever a service token is
+// present (config is sticky and shared) — its workspace subsystem is OFF, so we
+// never inject a selector (a pinned token would 409 on every call, SPEC 3 §1).
+// Otherwise the IDENTITY lane uses the device-flow access token.
+func resolveAuth() (*authInfo, error) {
+	apiURL := resolveAPIURL()
+	if st := serviceToken(); st != "" {
+		return &authInfo{apiURL: apiURL, token: st, identityLane: false}, nil
+	}
+	if ok, err := identityConfigured(); err != nil {
+		return nil, err
+	} else if ok {
+		tok, err := resolveIdentityAccessToken()
+		if err != nil {
+			return nil, err
 		}
-		if apiURL == "" {
-			apiURL = DefaultAPIURL
-		}
-		return apiURL, token, nil
+		return &authInfo{apiURL: apiURL, token: tok, identityLane: true}, nil
 	}
-	if err != nil {
-		return "", "", err
+	return nil, errNotLoggedIn
+}
+
+// isWorkspaceExempt: discovery paths carry NO X-Blenau-Workspace header
+// (SPEC 1 §1.2) and never trigger workspace resolution (avoids recursion).
+func isWorkspaceExempt(path string) bool {
+	return path == "/workspaces" || path == "/health"
+}
+
+// classifyWrite marks the mutating endpoints the CLI reaches (SPEC 3 §6).
+// Everything else — including POST /knowledge/search — is a read.
+func classifyWrite(method, path string) bool {
+	switch {
+	case method == "POST" && path == "/knowledge/ingest-enhanced":
+		return true
+	case method == "POST" && path == "/knowledge/edit-section":
+		return true
+	case method == "POST" && strings.HasPrefix(path, "/assets/upload-binary"):
+		return true
+	case method == "DELETE" && strings.HasPrefix(path, "/assets/file"):
+		return true
 	}
-	if apiURL == "" {
-		apiURL = cfg.APIURL
-	}
-	if apiURL == "" {
-		apiURL = DefaultAPIURL
-	}
-	if token == "" {
-		token = cfg.Token
-	}
-	if token == "" {
-		return "", "", fmt.Errorf("config has no token: run 'blenau login --token <tk>' first")
-	}
-	return apiURL, token, nil
+	return false
 }
 
 // jsonFlag returns the effective --json setting (subcmd or persistent root).
@@ -79,24 +121,62 @@ func isTerminal(f *os.File) bool {
 // apiCall does an HTTP request to api with auth. Body may be nil.
 // Returns (response bytes, status code, error). For non-2xx, returns the body
 // and a nil error so callers can format JSON-vs-human appropriately.
+//
+// In the identity lane it is the ONE place that resolves and injects the
+// X-Blenau-Workspace selector (SPEC 3 §6) and applies the write guard (§7):
+// confirmation when writing to a workspace other than the active one, and
+// verification of the workspace echo after a successful write.
 func apiCall(method, path string, body []byte) ([]byte, int, error) {
-	apiURL, token, err := resolveAuth()
-	if err != nil {
-		return nil, 0, err
-	}
 	var rdr io.Reader
+	ct := ""
 	if body != nil {
 		rdr = bytes.NewReader(body)
+		ct = "application/json"
 	}
-	req, err := http.NewRequest(method, apiURL+path, rdr)
+	return apiRequest(method, path, rdr, ct)
+}
+
+// apiRequest is the single HTTP chokepoint (JSON and multipart both flow through
+// it), so the identity-lane workspace selector, write guard and echo check are
+// applied uniformly — no per-command HTTP path can bypass them.
+func apiRequest(method, path string, bodyReader io.Reader, contentType string) ([]byte, int, error) {
+	auth, err := resolveAuth()
 	if err != nil {
 		return nil, 0, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+
+	var target *WorkspaceRef
+	isWrite := false
+	if auth.identityLane && !isWorkspaceExempt(path) {
+		var anchor *WorkspaceRef
+		target, anchor, err = resolveTargetAndAnchor()
+		if err != nil {
+			return nil, 0, err
+		}
+		isWrite = classifyWrite(method, path)
+		if isWrite && target != nil {
+			if anchor == nil || target.ID != anchor.ID {
+				if err := confirmWrite(target, anchor); err != nil {
+					return nil, 0, err
+				}
+			} else {
+				fmt.Fprintf(os.Stderr, "→ writing to %s\n", target.Name)
+			}
+		}
 	}
-	req.Header.Set("Authorization", "Bearer "+token)
-	client := &http.Client{Timeout: 60 * time.Second}
+
+	req, err := http.NewRequest(method, auth.apiURL+path, bodyReader)
+	if err != nil {
+		return nil, 0, err
+	}
+	if contentType != "" {
+		req.Header.Set("Content-Type", contentType)
+	}
+	req.Header.Set("Authorization", "Bearer "+auth.token)
+	if target != nil && !isWorkspaceExempt(path) {
+		req.Header.Set("X-Blenau-Workspace", target.ID)
+	}
+	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, 0, fmt.Errorf("call %s: %w", req.URL, err)
@@ -105,6 +185,13 @@ func apiCall(method, path string, body []byte) ([]byte, int, error) {
 	raw, err := io.ReadAll(resp.Body)
 	if err != nil {
 		return nil, resp.StatusCode, err
+	}
+	// P0: a successful write must echo the workspace it landed in.
+	if isWrite && target != nil && resp.StatusCode < 400 {
+		if err := verifyWorkspaceEcho(raw, target.ID); err != nil {
+			return raw, resp.StatusCode, err
+		}
+		fmt.Fprintf(os.Stderr, "✓ wrote to %s\n", target.Name)
 	}
 	return raw, resp.StatusCode, nil
 }

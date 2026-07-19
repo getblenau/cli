@@ -1,14 +1,8 @@
 package cmd
 
 import (
-	"bytes"
 	"encoding/json"
-	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"os"
-	"time"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/text/unicode/norm"
@@ -47,43 +41,18 @@ func NewSearchCmd() *cobra.Command {
 				}
 			}
 
-			cfg, err := LoadConfig()
-			if errors.Is(err, os.ErrNotExist) {
-				return fmt.Errorf("not logged in: run 'blenau login --token <tk>' first")
-			}
-			if err != nil {
-				return err
-			}
-			if cfg.Token == "" {
-				return fmt.Errorf("config has no token: run 'blenau login --token <tk>' first")
-			}
-			if cfg.APIURL == "" {
-				cfg.APIURL = DefaultAPIURL
-			}
-
 			body, _ := json.Marshal(map[string]interface{}{
 				"query": query,
 				"top_k": topK,
 			})
-			req, err := http.NewRequest("POST", cfg.APIURL+"/knowledge/search", bytes.NewReader(body))
+			// search is a READ — it roams to the active workspace via the central
+			// selector injection in apiCall (identity lane).
+			raw, status, err := apiCall("POST", "/knowledge/search", body)
 			if err != nil {
 				return err
 			}
-			req.Header.Set("Content-Type", "application/json")
-			req.Header.Set("Authorization", "Bearer "+cfg.Token)
-
-			client := &http.Client{Timeout: 30 * time.Second}
-			resp, err := client.Do(req)
-			if err != nil {
-				return fmt.Errorf("call %s: %w", req.URL, err)
-			}
-			defer resp.Body.Close()
-			raw, err := io.ReadAll(resp.Body)
-			if err != nil {
-				return err
-			}
-			if resp.StatusCode >= 400 {
-				return fmt.Errorf("api error %d: %s", resp.StatusCode, string(raw))
+			if status >= 400 {
+				return fmt.Errorf("api error %d: %s", status, string(raw))
 			}
 
 			if asJSON {

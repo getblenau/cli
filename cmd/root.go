@@ -22,8 +22,18 @@ func NewRootCmd(version string) *cobra.Command {
 	// --agent-manifest is intercepted in main() before Cobra parsing;
 	// declared here so it appears in --help.
 	root.PersistentFlags().Bool("agent-manifest", false, "emit a JSON contract describing the CLI surface and exit")
+	// Multi-workspace selector (browser-login/identity lane only; ignored with a
+	// pinned service token). Bound to package globals used by apiCall.
+	root.PersistentFlags().StringVar(&flagWorkspace, "workspace", "",
+		"Workspace (slug or id) to act in. Reads roam; writes require confirmation when it differs from the active workspace.")
+	root.PersistentFlags().StringVar(&flagConfirmWorkspace, "confirm-workspace", "",
+		"Confirm a write to this workspace (slug or id) in non-interactive use.")
 
 	root.AddCommand(NewLoginCmd())
+	root.AddCommand(NewLogoutCmd())
+	root.AddCommand(NewWhoamiCmd())
+	root.AddCommand(NewStatusCmd())
+	root.AddCommand(NewUseCmd())
 	root.AddCommand(NewSearchCmd())
 	root.AddCommand(NewWorkspacesCmd())
 	root.AddCommand(NewReposCmd())
