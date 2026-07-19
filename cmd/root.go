@@ -25,6 +25,7 @@ func NewRootCmd(version string) *cobra.Command {
 
 	root.AddCommand(NewLoginCmd())
 	root.AddCommand(NewSearchCmd())
+	root.AddCommand(NewWorkspacesCmd())
 	root.AddCommand(NewReposCmd())
 	root.AddCommand(NewDocsCmd())
 	root.AddCommand(NewIngestCmd())
