@@ -42,6 +42,15 @@ func NewRootCmd(version string) *cobra.Command {
 	root.AddCommand(NewEditSectionCmd())
 	root.AddCommand(NewAuditCmd())
 	root.AddCommand(NewAssetsCmd())
+	root.AddCommand(NewNotesCmd())
+	root.AddCommand(NewCollectionsCmd())
+	root.AddCommand(NewPatchSectionCmd())
+	root.AddCommand(NewRenameSectionCmd())
+	root.AddCommand(NewDeleteSectionCmd())
+	root.AddCommand(NewRevertWriteCmd())
+	root.AddCommand(NewCrystallizeCmd())
+	root.AddCommand(NewSmartCrystallizeCmd())
+	root.AddCommand(NewSuggestCrosslinksCmd())
 
 	return root
 }

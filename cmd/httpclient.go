@@ -232,3 +232,21 @@ func emitOrFail(cmd *cobra.Command, raw []byte, status int, humanFn func(raw []b
 	}
 	return humanFn(raw)
 }
+
+// readContentArg returns the bytes for a write body: the file at contentFile, or
+// stdin when contentFile is empty or "-". This lets agents pipe content in
+// (`... | blenau patch-section --content-file -`) without a temp file.
+func readContentArg(contentFile string) ([]byte, error) {
+	if contentFile != "" && contentFile != "-" {
+		b, err := os.ReadFile(contentFile)
+		if err != nil {
+			return nil, fmt.Errorf("read content file: %w", err)
+		}
+		return b, nil
+	}
+	b, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("read stdin: %w", err)
+	}
+	return b, nil
+}
