@@ -172,6 +172,34 @@ func TestReposJSON(t *testing.T) {
 	}
 }
 
+// TestWorkspaceHeader asserts the global --workspace flag is forwarded to the
+// API as the X-Blenau-Workspace header (multi-workspace roaming).
+func TestWorkspaceHeader(t *testing.T) {
+	bin := buildBin(t)
+	gotHeader := make(chan string, 1)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotHeader <- r.Header.Get("X-Blenau-Workspace")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"repos":[],"count":0}`))
+	}))
+	defer srv.Close()
+	tmp := t.TempDir()
+	if runtime.GOOS == "windows" {
+		t.Setenv("APPDATA", tmp)
+	} else {
+		t.Setenv("XDG_CONFIG_HOME", tmp)
+	}
+	t.Setenv("BLENAU_API_URL", srv.URL)
+	t.Setenv("BLENAU_API_TOKEN", "test")
+	want := "ws-uuid-123"
+	if err := exec.Command(bin, "repos", "list", "--workspace", want, "--json").Run(); err != nil {
+		t.Fatalf("repos list: %v", err)
+	}
+	if got := <-gotHeader; got != want {
+		t.Fatalf("X-Blenau-Workspace = %q, want %q", got, want)
+	}
+}
+
 // TestDocsGet404 asserts non-2xx error path: stderr has detail, exit code 1.
 func TestDocsGet404(t *testing.T) {
 	bin := buildBin(t)

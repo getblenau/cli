@@ -293,9 +293,9 @@ func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition, insert
 		return nil, 0, fmt.Errorf("read file: %w", err)
 	}
 	fields := map[string]string{
-		"doc_path":        doc,
-		"filename":        filename,
-		"alt_text":        alt,
+		"doc_path":          doc,
+		"filename":          filename,
+		"alt_text":          alt,
 		"insert_heading":    insertHeading,
 		"insert_position":   insertPosition,
 		"insert_after_text": insertAfterText,
@@ -318,6 +318,7 @@ func uploadAsset(path, filename, doc, alt, insertHeading, insertPosition, insert
 	}
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	req.Header.Set("Authorization", "Bearer "+token)
+	setWorkspaceHeader(req)
 	client := &http.Client{Timeout: 120 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {

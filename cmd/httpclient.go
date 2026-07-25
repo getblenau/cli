@@ -20,6 +20,51 @@ const envAPIURL = "BLENAU_API_URL"
 // envAPIToken allows overriding the API token from env.
 const envAPIToken = "BLENAU_API_TOKEN"
 
+// envWorkspace lets a caller pin the target workspace (a tenant UUID) without a
+// flag — handy for CI. The --workspace flag overrides it (see root.go).
+const envWorkspace = "BLENAU_WORKSPACE"
+
+// workspaceOverride holds the value of the global --workspace flag, set in the
+// root command's PersistentPreRun. Empty = fall back to env, then the token's
+// pinned workspace.
+var workspaceOverride string
+
+// resolveWorkspace returns the effective workspace selector, if any. A blenau_tk_
+// token is pinned to one workspace and ignores this; an identity-lane token uses
+// it to roam (the api 409s a discordant pin, so it is safe to always send).
+func resolveWorkspace() string {
+	if workspaceOverride != "" {
+		return workspaceOverride
+	}
+	return os.Getenv(envWorkspace)
+}
+
+// setWorkspaceHeader adds the X-Blenau-Workspace selector to a request when one
+// is configured. Shared by every request path (apiCall + multipart uploads).
+func setWorkspaceHeader(req *http.Request) {
+	if ws := resolveWorkspace(); ws != "" {
+		req.Header.Set("X-Blenau-Workspace", ws)
+	}
+}
+
+// readContentArg returns the bytes for a write body: the file at contentFile, or
+// stdin when contentFile is empty or "-". This lets agents pipe content in
+// (`... | blenau patch-section --content-file -`) without a temp file.
+func readContentArg(contentFile string) ([]byte, error) {
+	if contentFile != "" && contentFile != "-" {
+		b, err := os.ReadFile(contentFile)
+		if err != nil {
+			return nil, fmt.Errorf("read content file: %w", err)
+		}
+		return b, nil
+	}
+	b, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return nil, fmt.Errorf("read stdin: %w", err)
+	}
+	return b, nil
+}
+
 // resolveAuth returns (apiURL, token, err).
 func resolveAuth() (string, string, error) {
 	apiURL := os.Getenv(envAPIURL)
@@ -96,6 +141,7 @@ func apiCall(method, path string, body []byte) ([]byte, int, error) {
 		req.Header.Set("Content-Type", "application/json")
 	}
 	req.Header.Set("Authorization", "Bearer "+token)
+	setWorkspaceHeader(req)
 	client := &http.Client{Timeout: 60 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
