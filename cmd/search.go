@@ -3,15 +3,19 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/text/unicode/norm"
 )
 
-// SearchResult is a single result row from /knowledge/search.
+// SearchResult is a single result row from /knowledge/search. The API returns
+// content + heading (there is no "snippet" field).
 type SearchResult struct {
 	Path      string  `json:"path"`
-	Snippet   string  `json:"snippet"`
+	Title     string  `json:"title"`
+	Heading   string  `json:"heading"`
+	Content   string  `json:"content"`
 	Relevance float64 `json:"relevance"`
 }
 
@@ -77,8 +81,11 @@ func NewSearchCmd() *cobra.Command {
 			fmt.Fprintf(w, "%d result(s) for %q:\n\n", sr.Count, sr.Query)
 			for i, r := range sr.Results {
 				fmt.Fprintf(w, "%d. [%.3f] %s\n", i+1, r.Relevance, norm.NFC.String(r.Path))
-				if r.Snippet != "" {
-					fmt.Fprintf(w, "   %s\n", norm.NFC.String(r.Snippet))
+				if r.Heading != "" {
+					fmt.Fprintf(w, "   %s\n", norm.NFC.String(r.Heading))
+				}
+				if snippet := snippetOf(r.Content); snippet != "" {
+					fmt.Fprintf(w, "   %s\n", norm.NFC.String(snippet))
 				}
 				fmt.Fprintln(w)
 			}
@@ -88,4 +95,14 @@ func NewSearchCmd() *cobra.Command {
 	c.Flags().Int("top-k", 10, "Max results to return.")
 	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
 	return c
+}
+
+// snippetOf returns a single-line, length-bounded preview of a result body.
+func snippetOf(content string) string {
+	s := strings.TrimSpace(strings.ReplaceAll(content, "\n", " "))
+	const max = 160
+	if len(s) > max {
+		s = s[:max] + "…"
+	}
+	return s
 }

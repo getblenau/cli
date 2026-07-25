@@ -41,20 +41,51 @@ type Manifest struct {
 	GlobalFlags []FlagSpec    `json:"global_flags,omitempty"`
 }
 
-// requiredFlags lists flag names that are required per command.
+// requiredFlags lists flag names that are required per command. Top-level
+// commands are keyed by their own name; subcommands by "group leaf".
 var requiredFlags = map[string][]string{
-	"login":        {"token"},
-	"ingest":       {"path", "title"},
-	"edit-section": {"path", "heading", "content-file", "version"},
-	"section":      {"heading"},
+	"login":              {"token"},
+	"ingest":             {"path", "title"},
+	"edit-section":       {"path", "heading", "version"},
+	"patch-section":      {"path", "heading"},
+	"rename-section":     {"path", "heading", "new-heading"},
+	"delete-section":     {"path", "heading"},
+	"revert-write":       {"path"},
+	"docs section":       {"heading"},
+	"collections import": {"file"},
+	"repos connect":      {"repo", "installation-id"},
 }
 
-// requiredArgs lists arg names per command (cobra doesn't carry names).
+// commandArgs lists positional arg names per command (cobra doesn't carry
+// names). Keyed the same way as requiredFlags.
 var commandArgs = map[string][]ArgSpec{
-	"search":    {{Name: "query", Type: "string", Required: true}},
-	"get":       {{Name: "path", Type: "string", Required: true}},
-	"structure": {{Name: "path", Type: "string", Required: true}},
-	"section":   {{Name: "path", Type: "string", Required: true}},
+	"search":                    {{Name: "query", Type: "string", Required: true}},
+	"docs get":                  {{Name: "path", Type: "string", Required: true}},
+	"docs structure":            {{Name: "path", Type: "string", Required: true}},
+	"docs section":              {{Name: "path", Type: "string", Required: true}},
+	"suggest-crosslinks":        {{Name: "document-id", Type: "string", Required: true}},
+	"repos disconnect":          {{Name: "repo-id", Type: "string", Required: true}},
+	"repos update":              {{Name: "repo-id", Type: "string", Required: true}},
+	"repos available":           {{Name: "installation-id", Type: "string", Required: true}},
+	"repos sync":                {{Name: "repo-id", Type: "string", Required: false}},
+	"notes remember":            {{Name: "body", Type: "string", Required: true}},
+	"notes done":                {{Name: "note-id", Type: "string", Required: true}},
+	"notes reopen":              {{Name: "note-id", Type: "string", Required: true}},
+	"notes update":              {{Name: "note-id", Type: "string", Required: true}},
+	"notes forget":              {{Name: "note-id", Type: "string", Required: true}},
+	"collections create":        {{Name: "name", Type: "string", Required: true}},
+	"collections describe":      {{Name: "name", Type: "string", Required: true}},
+	"collections fields":        {{Name: "name", Type: "string", Required: true}},
+	"collections update":        {{Name: "name", Type: "string", Required: true}},
+	"collections query":         {{Name: "name", Type: "string", Required: true}},
+	"collections reindex":       {{Name: "name", Type: "string", Required: true}},
+	"collections import":        {{Name: "name", Type: "string", Required: true}},
+	"collections embed-pending": {{Name: "name", Type: "string", Required: true}},
+	"collections get-record":    {{Name: "name", Type: "string", Required: true}, {Name: "external-id", Type: "string", Required: true}},
+	"collections delete-record": {{Name: "name", Type: "string", Required: true}, {Name: "external-id", Type: "string", Required: true}},
+	"collections reconcile":     {{Name: "name", Type: "string", Required: true}},
+	"collections rotate-secret": {{Name: "name", Type: "string", Required: true}},
+	"collections delete":        {{Name: "name", Type: "string", Required: true}},
 }
 
 func flagType(f *pflag.Flag) string {
@@ -151,8 +182,8 @@ func BuildManifest(root *cobra.Command, version string) Manifest {
 				spec := CommandSpec{
 					Name:        name,
 					Description: strings.TrimSpace(child.Short),
-					Args:        commandArgs[child.Name()],
-					Flags:       collectFlags(child.Flags(), requiredFlags[child.Name()]),
+					Args:        commandArgs[name],
+					Flags:       collectFlags(child.Flags(), requiredFlags[name]),
 				}
 				m.Commands = append(m.Commands, spec)
 			}
