@@ -48,11 +48,14 @@ func NotifyIfUpdateAvailable(current string, stderr *os.File) {
 	if latest == "" || !isNewer(latest, current) {
 		return
 	}
+	// Print only the VERSION and point at `blenau update` — never a URL sourced
+	// from the cache. The cache (update-check.json in a user-writable dir) is
+	// advisory and could be poisoned; `blenau update` re-fetches from GitHub
+	// fresh and decides the actual action, so no cached value is ever actioned.
 	fmt.Fprintf(stderr,
 		"\nA new version of blenau is available: %s (you have v%s).\n"+
-			"  Update: %s\n"+
-			"  or:     go install github.com/getblenau/cli@latest\n",
-		latest, current, releasesURL)
+			"  Run: blenau update\n",
+		latest, current)
 }
 
 // cachedLatestRelease returns the latest release tag, hitting GitHub at most

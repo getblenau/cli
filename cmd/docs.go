@@ -24,20 +24,48 @@ func NewDocsCmd() *cobra.Command {
 }
 
 func newDocsListCmd() *cobra.Command {
-	return &cobra.Command{
+	c := &cobra.Command{
 		Use:   "list",
-		Short: "List all knowledge documents.",
+		Short: "List knowledge documents, optionally filtered.",
+		Long: `List knowledge documents the caller can read. Filters are AND-composed and
+applied server-side inside your scope (they narrow, never widen):
+
+  --prefix       only docs whose path starts with this (e.g. ganemo/infra-odoo/)
+  --status       ready | pending | failed
+  --source-type  github | manual | crystallize
+
+Each row shows path, status, source and title.
+
+Examples:
+  blenau docs list --prefix ganemo/infra-odoo/
+  blenau docs list --status failed
+  blenau docs list --source-type manual`,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			raw, status, err := apiCall("GET", "/knowledge/documents", nil)
+			q := url.Values{}
+			if v, _ := cmd.Flags().GetString("prefix"); v != "" {
+				q.Set("prefix", v)
+			}
+			if v, _ := cmd.Flags().GetString("status"); v != "" {
+				q.Set("status", v)
+			}
+			if v, _ := cmd.Flags().GetString("source-type"); v != "" {
+				q.Set("source_type", v)
+			}
+			path := "/knowledge/documents"
+			if enc := q.Encode(); enc != "" {
+				path += "?" + enc
+			}
+			raw, status, err := apiCall("GET", path, nil)
 			if err != nil {
 				return err
 			}
 			return emitOrFail(cmd, raw, status, func(b []byte) error {
 				var resp struct {
 					Documents []struct {
-						Path    string `json:"path"`
-						Title   string `json:"title"`
-						Version int    `json:"version"`
+						Path       string `json:"path"`
+						Title      string `json:"title"`
+						Status     string `json:"status"`
+						SourceType string `json:"source_type"`
 					} `json:"documents"`
 				}
 				if err := json.Unmarshal(b, &resp); err != nil {
@@ -50,13 +78,18 @@ func newDocsListCmd() *cobra.Command {
 					return nil
 				}
 				for _, d := range resp.Documents {
-					fmt.Fprintf(w, "%s  (v%d) %s\n",
-						norm.NFC.String(d.Path), d.Version, norm.NFC.String(d.Title))
+					fmt.Fprintf(w, "%-9s %-10s %s  %s\n",
+						norm.NFC.String(d.Status), norm.NFC.String(d.SourceType),
+						norm.NFC.String(d.Path), norm.NFC.String(d.Title))
 				}
 				return nil
 			})
 		},
 	}
+	c.Flags().String("prefix", "", "Only docs whose path starts with this prefix.")
+	c.Flags().String("status", "", "Filter by status: ready | pending | failed.")
+	c.Flags().String("source-type", "", "Filter by source: github | manual | crystallize.")
+	return c
 }
 
 func newDocsGetCmd() *cobra.Command {
