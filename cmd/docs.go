@@ -20,6 +20,7 @@ func NewDocsCmd() *cobra.Command {
 	c.AddCommand(newDocsGetCmd())
 	c.AddCommand(newDocsStructureCmd())
 	c.AddCommand(newDocsSectionCmd())
+	c.AddCommand(newDocsDeleteCmd())
 	return c
 }
 

@@ -83,16 +83,22 @@ Opt out of the passive "new version" notice with BLENAU_NO_UPDATE_CHECK=1.`,
 				return nil
 			}
 
-			// Release-binary channel: resolve the asset for this OS/arch and print it.
+			// Release-binary channel: resolve the asset for this OS/arch and print
+			// it. Frame the trade-off so a binary user understands the choice:
+			// downloaded binaries update manually (they aren't signed yet, so we
+			// won't swap the running binary out from under you); `go install` is the
+			// hands-off path where `blenau update` self-updates.
 			url := rel.assetURLFor(runtime.GOOS, runtime.GOARCH)
 			fmt.Fprintf(w, "A newer version is available: %s (you have v%s).\n\n",
 				rel.Tag, strings.TrimPrefix(current, "v"))
+			fmt.Fprintf(w, "You're on the downloaded-binary channel, so this update is a manual step:\n")
 			if url != "" {
-				fmt.Fprintf(w, "Download for %s/%s:\n  %s\n\n", runtime.GOOS, runtime.GOARCH, url)
+				fmt.Fprintf(w, "  %s\n\n", url)
 			} else {
-				fmt.Fprintf(w, "Releases:\n  %s\n\n", releasesURL)
+				fmt.Fprintf(w, "  %s\n\n", releasesURL)
 			}
-			fmt.Fprintf(w, "Or update via Go:\n  go install github.com/getblenau/cli@latest\n")
+			fmt.Fprintf(w, "Prefer hands-off updates? Install via Go instead — then 'blenau update'\nupdates in place:\n  go install github.com/getblenau/cli@latest\n\n")
+			fmt.Fprintf(w, "(Manual replacement is deliberate for downloaded binaries: they aren't signed\nyet, so we don't self-replace the running binary. This changes once signing ships.)\n")
 			return nil
 		},
 	}
