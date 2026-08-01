@@ -102,6 +102,10 @@ func classifyWrite(method, path string) bool {
 		return true
 	case (method == "PUT" || method == "DELETE") && strings.Contains(path, "/grants/"):
 		return true
+	// Note-list shares are access control too — the cross-workspace write
+	// guard must fire for them like for collection grants.
+	case (method == "PUT" || method == "DELETE") && strings.HasPrefix(path, "/notes/shares/"):
+		return true
 	case method == "DELETE" && strings.HasPrefix(path, "/collections/"):
 		return true
 	}

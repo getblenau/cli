@@ -59,6 +59,32 @@ func TestNotesRememberPrivateFlag(t *testing.T) {
 	}
 }
 
+func TestNotesShareListWireShape(t *testing.T) {
+	var captured map[string]interface{}
+	var path string
+	srv := notesServer(t, &captured, &path)
+	defer srv.Close()
+
+	if err := runNotes(t, srv, "share-list", "video-ideas", "--group", "gid"); err != nil {
+		t.Fatalf("share-list failed: %v", err)
+	}
+	if path != "PUT /notes/shares/gid" {
+		t.Fatalf("wrong endpoint: %s", path)
+	}
+	if err := runNotes(t, srv, "unshare-list", "video-ideas", "--group", "gid"); err != nil {
+		t.Fatalf("unshare-list failed: %v", err)
+	}
+	if path != "DELETE /notes/shares/gid" {
+		t.Fatalf("wrong endpoint: %s", path)
+	}
+	if !classifyWrite("PUT", "/notes/shares/gid") || !classifyWrite("DELETE", "/notes/shares/gid") {
+		t.Fatal("note-list shares must classify as writes")
+	}
+	if classifyWrite("GET", "/notes/shares") {
+		t.Fatal("listing shares is a read")
+	}
+}
+
 func TestNotesUpdateVisibilityFlags(t *testing.T) {
 	var captured map[string]interface{}
 	var path string
