@@ -106,6 +106,8 @@ func classifyWrite(method, path string) bool {
 	// guard must fire for them like for collection grants.
 	case (method == "PUT" || method == "DELETE") && strings.HasPrefix(path, "/notes/shares/"):
 		return true
+	case method == "PUT" && path == "/notes/list-prefs":
+		return true
 	case method == "DELETE" && strings.HasPrefix(path, "/collections/"):
 		return true
 	}
