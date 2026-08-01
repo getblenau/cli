@@ -93,6 +93,17 @@ func classifyWrite(method, path string) bool {
 		return true
 	case method == "DELETE" && strings.HasPrefix(path, "/assets/file"):
 		return true
+	// Collections mutations: record writes, backfill, reconcile, grants and
+	// collection deletion all change tenant data, so the cross-workspace write
+	// guard must fire for them exactly as it does for knowledge writes.
+	case method == "POST" && strings.HasPrefix(path, "/collections/") &&
+		(strings.HasSuffix(path, "/records") || strings.HasSuffix(path, "/import") ||
+			strings.HasSuffix(path, "/reconcile")):
+		return true
+	case (method == "PUT" || method == "DELETE") && strings.Contains(path, "/grants/"):
+		return true
+	case method == "DELETE" && strings.HasPrefix(path, "/collections/"):
+		return true
 	}
 	return false
 }

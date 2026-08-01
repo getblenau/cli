@@ -52,8 +52,11 @@ var requiredFlags = map[string][]string{
 	"delete-section":     {"path", "heading"},
 	"revert-write":       {"path"},
 	"docs section":       {"heading"},
-	"collections import": {"file"},
-	"repos connect":      {"repo", "installation-id"},
+	"collections import":  {"file"},
+	"collections upsert":  {"file"},
+	"collections share":   {"group"},
+	"collections unshare": {"group"},
+	"repos connect":       {"repo", "installation-id"},
 }
 
 // commandArgs lists positional arg names per command (cobra doesn't carry
@@ -86,6 +89,10 @@ var commandArgs = map[string][]ArgSpec{
 	"collections reconcile":     {{Name: "name", Type: "string", Required: true}},
 	"collections rotate-secret": {{Name: "name", Type: "string", Required: true}},
 	"collections delete":        {{Name: "name", Type: "string", Required: true}},
+	"collections upsert":        {{Name: "name", Type: "string", Required: true}},
+	"collections shares":        {{Name: "name", Type: "string", Required: true}},
+	"collections share":         {{Name: "name", Type: "string", Required: true}},
+	"collections unshare":       {{Name: "name", Type: "string", Required: true}},
 }
 
 func flagType(f *pflag.Flag) string {
