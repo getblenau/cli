@@ -97,6 +97,7 @@ var commandArgs = map[string][]ArgSpec{
 	"collections unshare":       {{Name: "name", Type: "string", Required: true}},
 	"notes share-list":          {{Name: "list", Type: "string", Required: true}},
 	"notes unshare-list":        {{Name: "list", Type: "string", Required: true}},
+	"notes set-default":         {{Name: "list", Type: "string", Required: true}},
 }
 
 func flagType(f *pflag.Flag) string {

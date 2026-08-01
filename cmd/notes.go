@@ -45,6 +45,41 @@ time. A workspace member (admin/member role) may read and write; readers cannot.
 	c.AddCommand(newNotesSharesCmd())
 	c.AddCommand(newNotesShareListCmd())
 	c.AddCommand(newNotesUnshareListCmd())
+	c.AddCommand(newNotesSetDefaultCmd())
+	return c
+}
+
+func newNotesSetDefaultCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "set-default <list>",
+		Short: "Set YOUR capture default for a list: --personal or --workspace.",
+		Long: `Set your capture habit for a list: with --personal, notes YOU add to it are
+personal unless a capture says otherwise. An explicit --private on 'notes
+remember' always wins; existing notes are untouched; other members' captures
+into a same-named list are unaffected. --workspace clears the habit.
+
+Examples:
+  blenau notes set-default video-ideas --personal
+  blenau notes set-default video-ideas --workspace`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			personal, _ := cmd.Flags().GetBool("personal")
+			workspace, _ := cmd.Flags().GetBool("workspace")
+			if personal == workspace {
+				return fmt.Errorf("pass exactly one of --personal or --workspace")
+			}
+			b, _ := json.Marshal(map[string]interface{}{
+				"list": args[0], "personal_by_default": personal,
+			})
+			raw, status, err := apiCall("PUT", "/notes/list-prefs", b)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().Bool("personal", false, "New notes you add to this list default to personal.")
+	c.Flags().Bool("workspace", false, "Clear the habit (workspace default again).")
 	return c
 }
 

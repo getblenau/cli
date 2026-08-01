@@ -85,6 +85,35 @@ func TestNotesShareListWireShape(t *testing.T) {
 	}
 }
 
+func TestNotesSetDefaultWireShape(t *testing.T) {
+	var captured map[string]interface{}
+	var path string
+	srv := notesServer(t, &captured, &path)
+	defer srv.Close()
+
+	if err := runNotes(t, srv, "set-default", "video-ideas", "--personal"); err != nil {
+		t.Fatalf("set-default failed: %v", err)
+	}
+	if path != "PUT /notes/list-prefs" {
+		t.Fatalf("wrong endpoint: %s", path)
+	}
+	if captured["personal_by_default"] != true || captured["list"] != "video-ideas" {
+		t.Fatalf("body did not travel: %v", captured)
+	}
+	if err := runNotes(t, srv, "set-default", "video-ideas", "--workspace"); err != nil {
+		t.Fatalf("set-default --workspace failed: %v", err)
+	}
+	if captured["personal_by_default"] != false {
+		t.Fatalf("--workspace must send false: %v", captured)
+	}
+	if err := runNotes(t, srv, "set-default", "video-ideas"); err == nil {
+		t.Fatal("must require exactly one of --personal/--workspace")
+	}
+	if !classifyWrite("PUT", "/notes/list-prefs") {
+		t.Fatal("list-prefs must classify as a write")
+	}
+}
+
 func TestNotesUpdateVisibilityFlags(t *testing.T) {
 	var captured map[string]interface{}
 	var path string
