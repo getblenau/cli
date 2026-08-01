@@ -42,6 +42,83 @@ time. A workspace member (admin/member role) may read and write; readers cannot.
 	c.AddCommand(newNotesReopenCmd())
 	c.AddCommand(newNotesUpdateCmd())
 	c.AddCommand(newNotesForgetCmd())
+	c.AddCommand(newNotesSharesCmd())
+	c.AddCommand(newNotesShareListCmd())
+	c.AddCommand(newNotesUnshareListCmd())
+	return c
+}
+
+func newNotesSharesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "shares",
+		Short: "Which of YOUR personal lists are shared with which groups.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			raw, status, err := apiCall("GET", "/notes/shares", nil)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+}
+
+func newNotesShareListCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "share-list <list>",
+		Short: "Lend one of YOUR personal lists to a group (additive, revocable).",
+		Long: `Lend one of your personal note lists to a group — "share my video-ideas list
+with the content team". The group's members and agents can then read and act on
+the personal notes in that list (mark done, edit), like a shared fridge list.
+Your other personal lists stay yours; workspace notes are unaffected. Only
+affects lists YOU own. Idempotent.
+
+Example:
+  blenau notes share-list video-ideas --group <group-id>`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			group, _ := cmd.Flags().GetString("group")
+			if group == "" {
+				return fmt.Errorf("--group is required (the group's id)")
+			}
+			raw, status, err := apiCall(
+				"PUT",
+				"/notes/shares/"+url.PathEscape(group)+"?list="+url.QueryEscape(args[0]),
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().String("group", "", "Group id to share with. REQUIRED.")
+	_ = c.MarkFlagRequired("group")
+	return c
+}
+
+func newNotesUnshareListCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "unshare-list <list>",
+		Short: "Stop lending a personal list to a group (access ends immediately).",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			group, _ := cmd.Flags().GetString("group")
+			if group == "" {
+				return fmt.Errorf("--group is required")
+			}
+			raw, status, err := apiCall(
+				"DELETE",
+				"/notes/shares/"+url.PathEscape(group)+"?list="+url.QueryEscape(args[0]),
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().String("group", "", "Group id to unshare. REQUIRED.")
+	_ = c.MarkFlagRequired("group")
 	return c
 }
 

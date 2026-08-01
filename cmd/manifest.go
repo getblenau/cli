@@ -56,6 +56,8 @@ var requiredFlags = map[string][]string{
 	"collections upsert":  {"file"},
 	"collections share":   {"group"},
 	"collections unshare": {"group"},
+	"notes share-list":    {"group"},
+	"notes unshare-list":  {"group"},
 	"repos connect":       {"repo", "installation-id"},
 }
 
@@ -93,6 +95,8 @@ var commandArgs = map[string][]ArgSpec{
 	"collections shares":        {{Name: "name", Type: "string", Required: true}},
 	"collections share":         {{Name: "name", Type: "string", Required: true}},
 	"collections unshare":       {{Name: "name", Type: "string", Required: true}},
+	"notes share-list":          {{Name: "list", Type: "string", Required: true}},
+	"notes unshare-list":        {{Name: "list", Type: "string", Required: true}},
 }
 
 func flagType(f *pflag.Flag) string {
