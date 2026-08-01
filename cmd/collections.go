@@ -50,12 +50,16 @@ require an admin/member role.`,
 	c.AddCommand(newCollectionsQueryCmd())
 	c.AddCommand(newCollectionsReindexCmd())
 	c.AddCommand(newCollectionsImportCmd())
+	c.AddCommand(newCollectionsUpsertCmd())
 	c.AddCommand(newCollectionsEmbedPendingCmd())
 	c.AddCommand(newCollectionsGetRecordCmd())
 	c.AddCommand(newCollectionsDeleteRecordCmd())
 	c.AddCommand(newCollectionsReconcileCmd())
 	c.AddCommand(newCollectionsRotateSecretCmd())
 	c.AddCommand(newCollectionsDeleteCmd())
+	c.AddCommand(newCollectionsSharesCmd())
+	c.AddCommand(newCollectionsShareCmd())
+	c.AddCommand(newCollectionsUnshareCmd())
 	return c
 }
 
@@ -188,6 +192,16 @@ ingest. Only the flags you pass are changed (unset flags are left untouched).
   --write-date-field   JSON key carrying the update clock (default: write_date).
   --description         human description.
 
+Contract knobs (make agentic writers safe — see 'collections upsert'):
+  --required-fields    fields every record MUST carry (missing -> rejected).
+  --unknown-policy     accept|warn|reject for undeclared fields (default warn:
+                       accepted + flagged in brain health).
+  --append-only        true turns the collection into a LEDGER: existing records
+                       become immutable (identical re-sends no-op, updates and
+                       deletes are refused). false turns it back off.
+  --guidance           usage notes (<=4000 chars) served verbatim by describe to
+                       every agent — write them for the next agent.
+
 Saving does NOT re-embed. If the response has reindex_required: true, the vectors
 no longer match the config — run 'blenau collections reindex <name>'. Requires an
 admin/member role.
@@ -230,6 +244,22 @@ Examples:
 				}
 				body["field_types"] = parsed
 			}
+			if cmd.Flags().Changed("required-fields") {
+				v, _ := cmd.Flags().GetStringSlice("required-fields")
+				body["required_fields"] = v
+			}
+			if cmd.Flags().Changed("unknown-policy") {
+				v, _ := cmd.Flags().GetString("unknown-policy")
+				body["unknown_policy"] = v
+			}
+			if cmd.Flags().Changed("append-only") {
+				v, _ := cmd.Flags().GetBool("append-only")
+				body["append_only"] = v
+			}
+			if cmd.Flags().Changed("guidance") {
+				v, _ := cmd.Flags().GetString("guidance")
+				body["guidance"] = v
+			}
 			if len(body) == 0 {
 				return fmt.Errorf("nothing to update: pass at least one role flag (see --help)")
 			}
@@ -248,6 +278,10 @@ Examples:
 	c.Flags().String("field-types", "", `JSON map of {field: "string|number|date|enum"}.`)
 	c.Flags().String("id-field", "", "JSON key carrying the record id (default: id).")
 	c.Flags().String("write-date-field", "", "JSON key carrying the update clock (default: write_date).")
+	c.Flags().StringSlice("required-fields", nil, "Comma-separated fields every record must carry.")
+	c.Flags().String("unknown-policy", "", "accept|warn|reject for undeclared fields (default warn).")
+	c.Flags().Bool("append-only", false, "Ledger mode: existing records become immutable.")
+	c.Flags().String("guidance", "", "Usage notes served by describe to every agent (<=4000 chars).")
 	return c
 }
 
@@ -426,6 +460,203 @@ Example:
 	c.Flags().String("file", "", "Path to a JSON array of flat record objects. REQUIRED.")
 	c.Flags().Bool("drain", false, "After import, loop embed-pending until the whole collection is embedded.")
 	_ = c.MarkFlagRequired("file")
+	return c
+}
+
+func newCollectionsUpsertCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "upsert <name>",
+		Short: "Upsert records with your own auth — the agent/script write path.",
+		Long: `Write records to a collection with your own credential (no ingest URL). This
+is the persistence path for agents and scripts: a session log, a learning-ledger
+entry, a structured result.
+
+--file points at a JSON array of flat record objects. Semantics:
+  * UPSERT keyed by the collection's id field inside each record — re-running is
+    idempotent. For event/ledger data use a NEW unique id per event (e.g. a
+    session id), never a reused one.
+  * Per-record isolation: one bad record fails alone with a structured error
+    ({error, message, field, hint}); the rest land. Check "failed"/"results".
+  * The collection's contract runs on every record (required fields, types,
+    unknown-field policy) and, if your access is a filtered slice, writes are
+    confined to it. 'blenau collections describe <name>' shows the rules.
+  * --dry-run performs EVERY check and persists nothing — free validation.
+
+Requires write access to the collection (admin/member, or a group write grant).
+
+Examples:
+  blenau collections upsert learning-ledger --file session.json --dry-run
+  blenau collections upsert learning-ledger --file session.json --drain`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			name := args[0]
+			file, _ := cmd.Flags().GetString("file")
+			dryRun, _ := cmd.Flags().GetBool("dry-run")
+			drain, _ := cmd.Flags().GetBool("drain")
+			if file == "" {
+				return fmt.Errorf("--file is required (JSON array of record objects)")
+			}
+			records, err := readJSONArray(file)
+			if err != nil {
+				return err
+			}
+			b, _ := json.Marshal(map[string]interface{}{"records": records, "dry_run": dryRun})
+			raw, status, err := apiCall("POST", "/collections/"+url.PathEscape(name)+"/records", b)
+			if err != nil {
+				return err
+			}
+			if status >= 400 || dryRun || !drain {
+				return emitOrFail(cmd, raw, status, nil)
+			}
+			var res map[string]interface{}
+			_ = json.Unmarshal(raw, &res)
+			embedded, failed, err := drainEmbedPending(name)
+			if err != nil {
+				return err
+			}
+			if res == nil {
+				res = map[string]interface{}{}
+			}
+			res["drained_embedded"] = embedded
+			res["drained_failed"] = failed
+			out, _ := json.Marshal(res)
+			return emitOrFail(cmd, out, 200, func(_ []byte) error {
+				w := cmd.OutOrStdout()
+				fmt.Fprintf(w, "wrote %v record(s); embedded %d more while draining (%d failed)\n",
+					res["written"], embedded, failed)
+				return nil
+			})
+		},
+	}
+	c.Flags().String("file", "", "Path to a JSON array of flat record objects. REQUIRED.")
+	c.Flags().Bool("dry-run", false, "Validate every record (contract, scope) without persisting anything.")
+	c.Flags().Bool("drain", false, "After the write, loop embed-pending until everything is embedded.")
+	_ = c.MarkFlagRequired("file")
+	return c
+}
+
+func newCollectionsSharesCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "shares <name>",
+		Short: "List the groups this collection is shared with (admin).",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			raw, status, err := apiCall("GET", "/collections/"+url.PathEscape(args[0])+"/grants", nil)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, func(b []byte) error {
+				var resp struct {
+					Grants []struct {
+						Group        string                 `json:"group"`
+						GroupID      string                 `json:"group_id"`
+						Permission   string                 `json:"permission"`
+						RecordFilter map[string]interface{} `json:"record_filter"`
+					} `json:"grants"`
+				}
+				if err := json.Unmarshal(b, &resp); err != nil {
+					cmd.OutOrStdout().Write(norm.NFC.Bytes(b))
+					return nil
+				}
+				w := cmd.OutOrStdout()
+				if len(resp.Grants) == 0 {
+					fmt.Fprintln(w, "Not shared with any group.")
+					return nil
+				}
+				fmt.Fprintf(w, "%-24s %-8s %s\n", "GROUP", "PERM", "FILTER")
+				for _, g := range resp.Grants {
+					filter := ""
+					if g.RecordFilter != nil {
+						fb, _ := json.Marshal(g.RecordFilter)
+						filter = string(fb)
+					}
+					fmt.Fprintf(w, "%-24s %-8s %s\n",
+						norm.NFC.String(g.Group), g.Permission, norm.NFC.String(filter))
+				}
+				return nil
+			})
+		},
+	}
+}
+
+func newCollectionsShareCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "share <name>",
+		Short: "Share a collection with a group, optionally confined to a record slice (admin).",
+		Long: `Share a collection with a group (create or update the grant). Group-scoped
+principals (readers, grouped members, agents bound to groups) can only reach
+collections shared with their groups — this is how you give them access.
+
+--permission read|write. Effective write additionally requires the member/agent
+to be write-capable in that group; a reader role never writes.
+
+--filter is a JSON equality map (e.g. '{"student_id":"s-001"}') confining the
+group to a SLICE of the collection: reads only return matching records, writes
+must match (and are auto-stamped when unambiguous). Filter fields must be
+declared in the collection's field-types first. Requires an admin role.
+
+Examples:
+  blenau collections share learning-ledger --group <group-id> --permission write \
+      --filter '{"student_id":"s-001"}'
+  blenau collections share catalogue --group <group-id> --permission read`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			group, _ := cmd.Flags().GetString("group")
+			if group == "" {
+				return fmt.Errorf("--group is required (the group's id — see 'blenau groups' or the dashboard)")
+			}
+			permission, _ := cmd.Flags().GetString("permission")
+			body := map[string]interface{}{"permission": permission}
+			if cmd.Flags().Changed("filter") {
+				v, _ := cmd.Flags().GetString("filter")
+				var parsed map[string]interface{}
+				if err := json.Unmarshal([]byte(v), &parsed); err != nil {
+					return fmt.Errorf("--filter must be a JSON object: %w", err)
+				}
+				body["record_filter"] = parsed
+			}
+			b, _ := json.Marshal(body)
+			raw, status, err := apiCall(
+				"PUT",
+				"/collections/"+url.PathEscape(args[0])+"/grants/"+url.PathEscape(group),
+				b,
+			)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().String("group", "", "Group id to share with. REQUIRED.")
+	c.Flags().String("permission", "read", "read or write.")
+	c.Flags().String("filter", "", `JSON equality map confining the group to a slice, e.g. '{"student_id":"s-001"}'.`)
+	_ = c.MarkFlagRequired("group")
+	return c
+}
+
+func newCollectionsUnshareCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "unshare <name>",
+		Short: "Stop sharing a collection with a group (admin).",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			group, _ := cmd.Flags().GetString("group")
+			if group == "" {
+				return fmt.Errorf("--group is required")
+			}
+			raw, status, err := apiCall(
+				"DELETE",
+				"/collections/"+url.PathEscape(args[0])+"/grants/"+url.PathEscape(group),
+				nil,
+			)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().String("group", "", "Group id to unshare. REQUIRED.")
+	_ = c.MarkFlagRequired("group")
 	return c
 }
 
