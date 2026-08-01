@@ -57,14 +57,21 @@ Infer --list from what the user said ("my shopping list" -> "groceries";
 land in an existing bucket instead of coining a near-duplicate. Omit --list for
 the "inbox" bucket.
 
+--private makes the note PERSONAL: visible only to you (and credentials acting
+as you), never to other workspace members or standalone agents. Default is the
+shared workspace pool.
+
 Examples:
   blenau notes remember "buy oat milk" --list groceries
-  blenau notes remember "renew the domain on Monday" --list reminders`,
+  blenau notes remember "gift idea for mom" --list personal-stuff --private`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{"body": args[0]}
 			if list, _ := cmd.Flags().GetString("list"); list != "" {
 				body["list"] = list
+			}
+			if private, _ := cmd.Flags().GetBool("private"); private {
+				body["private"] = true
 			}
 			b, _ := json.Marshal(body)
 			raw, status, err := apiCall("POST", "/notes", b)
@@ -75,6 +82,7 @@ Examples:
 		},
 	}
 	c.Flags().String("list", "", "Bucket the note belongs to (e.g. groceries, reminders). Default: inbox.")
+	c.Flags().Bool("private", false, "Personal note: visible only to you, never to other members or standalone agents.")
 	return c
 }
 
@@ -250,9 +258,13 @@ func newNotesUpdateCmd() *cobra.Command {
 milk to oat milk", "move this to my work list". Only the fields you pass change.
 Pass the note id from 'blenau notes recall'.
 
+--private / --shared flip the note's visibility (only the creator may make a
+note personal; --shared puts it back in the workspace pool).
+
 Examples:
   blenau notes update <id> --body "oat milk"
-  blenau notes update <id> --list work`,
+  blenau notes update <id> --list work
+  blenau notes update <id> --private`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			body := map[string]interface{}{}
@@ -264,8 +276,19 @@ Examples:
 				v, _ := cmd.Flags().GetString("list")
 				body["list"] = v
 			}
+			privateSet, _ := cmd.Flags().GetBool("private")
+			sharedSet, _ := cmd.Flags().GetBool("shared")
+			if privateSet && sharedSet {
+				return fmt.Errorf("--private and --shared are mutually exclusive")
+			}
+			if privateSet {
+				body["private"] = true
+			}
+			if sharedSet {
+				body["private"] = false
+			}
 			if len(body) == 0 {
-				return fmt.Errorf("nothing to update: pass --body and/or --list")
+				return fmt.Errorf("nothing to update: pass --body, --list, --private or --shared")
 			}
 			b, _ := json.Marshal(body)
 			raw, status, err := apiCall("PATCH", "/notes/"+url.PathEscape(args[0]), b)
@@ -277,6 +300,8 @@ Examples:
 	}
 	c.Flags().String("body", "", "New note text.")
 	c.Flags().String("list", "", "Move the note to this list.")
+	c.Flags().Bool("private", false, "Make the note personal (creator-only).")
+	c.Flags().Bool("shared", false, "Put the note back in the shared workspace pool.")
 	return c
 }
 
