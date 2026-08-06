@@ -44,6 +44,11 @@ Examples:
 	c.Flags().String("title", "", "Document title.")
 	c.Flags().String("content-file", "", "File to read content from (stdin if omitted).")
 	c.Flags().Bool("auto-link", false, "Auto-suggest crosslinks (single-doc mode).")
+	// Ingesting replaces the WHOLE document and commits it to your repo — the
+	// widest-reaching write Blenau has. --dry-run shows the exact diff and
+	// writes nothing. Single-doc mode only: previewing a folder walk would
+	// print hundreds of diffs nobody reads.
+	c.Flags().Bool("dry-run", false, "Show the diff without writing or committing (single-doc mode).")
 	c.Flags().StringArray("source", nil, "Source as type=ref (repeatable, single-doc mode).")
 	c.Flags().String("dir", "", "Bulk mode: ingest every .md under this folder.")
 	c.Flags().String("prefix", "", "Bulk mode: prepend this to each file's brain path (e.g. handbook/).")
@@ -64,11 +69,13 @@ func runIngestSingle(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	dryRun, _ := cmd.Flags().GetBool("dry-run")
 	body := map[string]interface{}{
 		"path":      path,
 		"title":     title,
 		"content":   string(content),
 		"auto_link": autoLink,
+		"dry_run":   dryRun,
 	}
 	parsed, err := parseSources(sources)
 	if err != nil {
