@@ -53,6 +53,48 @@ Examples:
 	c.Flags().String("dir", "", "Bulk mode: ingest every .md under this folder.")
 	c.Flags().String("prefix", "", "Bulk mode: prepend this to each file's brain path (e.g. handbook/).")
 	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
+	c.AddCommand(newIngestStatusCmd())
+	return c
+}
+
+// newIngestStatusCmd builds `blenau ingest status <task-id>`.
+//
+// An ingest returns `status: "queued"` and a task_id: the document is saved and
+// committed, but the search index is rebuilt by a background worker. Without
+// this command the task_id would be a dead end — telling a caller to check on
+// something it has no way to check on.
+func newIngestStatusCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "status <task-id>",
+		Short: "Check whether a queued ingest has finished indexing.",
+		Long: `Check the state of an ingest task.
+
+An ingest returns immediately with status "queued" and a task id. The document
+is already SAVED at that point — written to the knowledge base and committed to
+your connected GitHub repo — but it is indexed by a background worker, so it
+becomes searchable a few seconds later. Nothing is at risk while it waits; only
+findability is pending.
+
+States: pending (waiting for a worker), processing (being indexed), completed
+(searchable now), failed (with the reason). A failed ingest retries a few times
+on its own; re-ingesting the same path also retries it, updating the document in
+place rather than creating a duplicate.
+
+To see everything that failed rather than one task:
+  blenau docs list --status failed
+
+Example:
+  blenau ingest status 3f8c1e64-9a2b-4d51-8f0e-1c7b2a9d4e55`,
+		Args: cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			raw, status, err := apiCall("GET", "/knowledge/ingest-status/"+args[0], nil)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, raw, status, nil)
+		},
+	}
+	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
 	return c
 }
 
