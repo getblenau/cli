@@ -21,6 +21,7 @@ func NewDocsCmd() *cobra.Command {
 	c.AddCommand(newDocsStructureCmd())
 	c.AddCommand(newDocsSectionCmd())
 	c.AddCommand(newDocsDeleteCmd())
+	c.AddCommand(newDocsSetSourcesCmd())
 	return c
 }
 
@@ -190,4 +191,50 @@ func joinPath(parts []string) string {
 		out += s
 	}
 	return out
+}
+
+// newDocsSetSourcesCmd records provenance on an EXISTING document without
+// re-sending its body. Re-ingesting a document just to add its sources is what
+// put a customer's agent on the path where identical content silently dropped
+// the metadata; "say where this came from" is not a content edit.
+func newDocsSetSourcesCmd() *cobra.Command {
+	c := &cobra.Command{
+		Use:   "set-sources",
+		Short: "Record where an existing document came from, without re-sending it.",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			doc, _ := cmd.Flags().GetString("path")
+			raw, _ := cmd.Flags().GetStringArray("source")
+			if doc == "" || len(raw) == 0 {
+				return fmt.Errorf("--path and at least one --source are required")
+			}
+			parsed, err := parseSources(raw)
+			if err != nil {
+				return err
+			}
+			body := map[string]any{"path": doc, "sources": parsed}
+			if metaOnly, _ := cmd.Flags().GetBool("metadata-only"); metaOnly {
+				body["update_body"] = false
+			}
+			if dry, _ := cmd.Flags().GetBool("dry-run"); dry {
+				body["dry_run"] = true
+			}
+			b, err := json.Marshal(body)
+			if err != nil {
+				return err
+			}
+			resp, status, err := apiCall("POST", "/knowledge/documents/sources", b)
+			if err != nil {
+				return err
+			}
+			return emitOrFail(cmd, resp, status, nil)
+		},
+	}
+	c.Flags().String("path", "", "Tenant-level doc path. REQUIRED.")
+	c.Flags().StringArray("source", nil, "Provenance as type=ref (repeatable). REQUIRED.")
+	c.Flags().Bool("metadata-only", false, "Do not touch the document body.")
+	c.Flags().Bool("dry-run", false, "Show what would change without writing.")
+	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
+	_ = c.MarkFlagRequired("path")
+	_ = c.MarkFlagRequired("source")
+	return c
 }
