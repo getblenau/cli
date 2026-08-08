@@ -52,6 +52,11 @@ func reposList(cmd *cobra.Command) error {
 				PathPrefix string `json:"path_prefix"`
 				Label      string `json:"label"`
 				DocCount   int    `json:"doc_count"`
+				// Whether the connection is bound to GitHub's numeric repo id
+				// rather than to the current org/name. A repo that is not
+				// protected stops syncing if it is renamed on GitHub, and
+				// nothing says so until someone notices the silence.
+				RenameProtected bool `json:"rename_protected"`
 			} `json:"repos"`
 		}
 		if err := json.Unmarshal(b, &resp); err != nil {
@@ -63,15 +68,28 @@ func reposList(cmd *cobra.Command) error {
 			fmt.Fprintln(w, "No repos.")
 			return nil
 		}
-		fmt.Fprintf(w, "%-38s %-30s %-24s %s\n", "ID", "REPO", "PATH_PREFIX", "DOCS")
+		fmt.Fprintf(w, "%-38s %-30s %-24s %-6s %s\n",
+			"ID", "REPO", "PATH_PREFIX", "DOCS", "RENAME-SAFE")
+		unprotected := 0
 		for _, r := range resp.Repos {
 			name := r.Repo
 			if name == "" {
 				name = r.FullName
 			}
-			fmt.Fprintf(w, "%-38s %-30s %-24s %d\n",
+			safe := "yes"
+			if !r.RenameProtected {
+				safe = "NO"
+				unprotected++
+			}
+			fmt.Fprintf(w, "%-38s %-30s %-24s %-6d %s\n",
 				norm.NFC.String(r.ID), norm.NFC.String(name),
-				norm.NFC.String(r.PathPrefix), r.DocCount)
+				norm.NFC.String(r.PathPrefix), r.DocCount, safe)
+		}
+		if unprotected > 0 {
+			fmt.Fprintf(w, "\n%d repo(s) match by name, not by GitHub id: renaming one\n"+
+				"on GitHub stops its sync silently. A push stamps the id\n"+
+				"automatically; to bind one now, re-point it at its current name:\n"+
+				"  blenau repos update <repo-id> --repo <org/current-name>\n", unprotected)
 		}
 		return nil
 	})
@@ -169,6 +187,11 @@ after the repo was renamed on GitHub, this is the fix — not disconnect and
 reconnect, which is refused while the repo still owns documents. It updates the
 connection and restamps every document's provenance in one transaction, after
 checking the new name is readable by this workspace's installation.
+
+Do not wait for it to fix itself. Blenau handles GitHub's repository.renamed
+event, but GitHub only delivers events the App is subscribed to, and in this
+installation it is not subscribed to that one — so this command is the only
+route. 'blenau repos list' marks which repos are RENAME-SAFE.
 
 Changing --path-prefix rewrites the path of every document that came from this
 repo so history follows the new prefix; the whole change is one transaction and
