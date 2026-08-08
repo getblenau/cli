@@ -200,7 +200,16 @@ func BuildManifest(root *cobra.Command, version string) Manifest {
 				}
 				m.Commands = append(m.Commands, spec)
 			}
-			continue
+			// A parent that also DOES something must still appear. This used to
+			// `continue` here, so the day `ingest status` was added, `blenau
+			// ingest` — the product's main write command, and the only place
+			// `--source` exists — silently vanished from the contract agents
+			// read to discover the CLI. Nothing failed; the command simply
+			// stopped being discoverable, and a customer's agent went looking
+			// for a way to record provenance and could not find one.
+			if !sub.Runnable() {
+				continue
+			}
 		}
 		spec := CommandSpec{
 			Name:        sub.Name(),
