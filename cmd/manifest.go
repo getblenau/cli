@@ -44,14 +44,15 @@ type Manifest struct {
 // requiredFlags lists flag names that are required per command. Top-level
 // commands are keyed by their own name; subcommands by "group leaf".
 var requiredFlags = map[string][]string{
-	"login":              {"token"},
-	"ingest":             {"path", "title"},
-	"edit-section":       {"path", "heading", "version"},
-	"patch-section":      {"path", "heading"},
-	"rename-section":     {"path", "heading", "new-heading"},
-	"delete-section":     {"path", "heading"},
-	"revert-write":       {"path"},
-	"docs section":       {"heading"},
+	"login":               {"token"},
+	"health repair":       {"type"},
+	"ingest":              {"path", "title"},
+	"edit-section":        {"path", "heading", "version"},
+	"patch-section":       {"path", "heading"},
+	"rename-section":      {"path", "heading", "new-heading"},
+	"delete-section":      {"path", "heading"},
+	"revert-write":        {"path"},
+	"docs section":        {"heading"},
 	"collections import":  {"file"},
 	"collections upsert":  {"file"},
 	"collections share":   {"group"},
