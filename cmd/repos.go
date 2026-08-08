@@ -161,14 +161,22 @@ modified.`,
 func newReposUpdateCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "update <repo-id>",
-		Short: "Change a connected repo's path_prefix and/or label.",
-		Long: `Edit a connected repo's path_prefix and/or label (repo id from 'blenau repos
-list'). Changing --path-prefix rewrites the path of every document that came
-from this repo so history follows the new prefix; the whole change is one
-transaction and fails (409) if any doc would collide with an existing path.
-Pass --path-prefix "" to move the repo to the root namespace.
+		Short: "Change a connected repo's name, path_prefix and/or label.",
+		Long: `Edit a connected repo (repo id from 'blenau repos list').
 
-Example:
+--repo is how a workspace survives a GitHub RENAME. If pushes stopped arriving
+after the repo was renamed on GitHub, this is the fix — not disconnect and
+reconnect, which is refused while the repo still owns documents. It updates the
+connection and restamps every document's provenance in one transaction, after
+checking the new name is readable by this workspace's installation.
+
+Changing --path-prefix rewrites the path of every document that came from this
+repo so history follows the new prefix; the whole change is one transaction and
+fails (409) if any doc would collide with an existing path. Pass --path-prefix
+"" to move the repo to the root namespace.
+
+Examples:
+  blenau repos update <repo-id> --repo acme/app-odoo
   blenau repos update <repo-id> --path-prefix docs/ --label "Main handbook"`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -181,8 +189,12 @@ Example:
 				label, _ := cmd.Flags().GetString("label")
 				body["label"] = label
 			}
+			if cmd.Flags().Changed("repo") {
+				r, _ := cmd.Flags().GetString("repo")
+				body["repo"] = r
+			}
 			if len(body) == 0 {
-				return fmt.Errorf("nothing to update: pass --path-prefix and/or --label")
+				return fmt.Errorf("nothing to update: pass --repo, --path-prefix and/or --label")
 			}
 			b, _ := json.Marshal(body)
 			raw, status, err := apiCall("PATCH", "/github/repos/"+url.PathEscape(args[0]), b)
@@ -194,6 +206,7 @@ Example:
 	}
 	c.Flags().String("path-prefix", "", "New namespace for the repo's docs (\"\" = root).")
 	c.Flags().String("label", "", "New human label.")
+	c.Flags().String("repo", "", "New full name on GitHub (org/name) after a rename.")
 	return c
 }
 
