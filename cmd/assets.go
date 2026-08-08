@@ -165,7 +165,7 @@ func newAssetsUploadCmd() *cobra.Command {
 func newAssetsListCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "list",
-		Short: "List a doc's image references and whether each resolves in GitHub.",
+		Short: "List a doc's image references: whether each file exists, and whether the viewer can load it.",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			doc, _ := cmd.Flags().GetString("doc")
 			if doc == "" {
@@ -187,7 +187,7 @@ func newAssetsListCmd() *cobra.Command {
 func newAssetsVerifyCmd() *cobra.Command {
 	c := &cobra.Command{
 		Use:   "verify",
-		Short: "Verify one asset reference resolves (i.e. will render).",
+		Short: "Verify one asset reference: does the file exist, and can the viewer actually load it?",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			doc, _ := cmd.Flags().GetString("doc")
 			rel, _ := cmd.Flags().GetString("path")
@@ -203,7 +203,7 @@ func newAssetsVerifyCmd() *cobra.Command {
 		},
 	}
 	c.Flags().String("doc", "", "Tenant-level doc path. REQUIRED.")
-	c.Flags().String("path", "", "Asset path as written in the markdown (e.g. assets/x.webp). REQUIRED.")
+	c.Flags().String("path", "", "Asset path exactly as written in the markdown, VERBATIM including any leading ../ (e.g. ../assets/x.webp). REQUIRED.")
 	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
 	_ = c.MarkFlagRequired("doc")
 	_ = c.MarkFlagRequired("path")
@@ -229,7 +229,7 @@ func newAssetsDeleteCmd() *cobra.Command {
 		},
 	}
 	c.Flags().String("doc", "", "Tenant-level doc path. REQUIRED.")
-	c.Flags().String("path", "", "Asset path as written in the markdown (e.g. assets/x.webp). REQUIRED.")
+	c.Flags().String("path", "", "Asset path exactly as written in the markdown, VERBATIM including any leading ../ (e.g. ../assets/x.webp). REQUIRED.")
 	c.Flags().Bool("json", false, "Emit JSON instead of human format.")
 	_ = c.MarkFlagRequired("doc")
 	_ = c.MarkFlagRequired("path")
