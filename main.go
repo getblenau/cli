@@ -16,7 +16,7 @@ import (
 )
 
 // version is overridden at build time via -ldflags "-X main.version=..."
-var version = "0.13.1"
+var version = "0.13.2"
 
 func main() {
 	setUTF8Stdout()

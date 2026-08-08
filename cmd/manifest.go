@@ -43,6 +43,9 @@ type Manifest struct {
 
 // requiredFlags lists flag names that are required per command. Top-level
 // commands are keyed by their own name; subcommands by "group leaf".
+// SUPPLEMENT, not the source of truth. Anything declared with
+// `MarkFlagRequired` is picked up from cobra automatically (see collectFlags);
+// this covers only flags a command enforces by hand inside RunE.
 var requiredFlags = map[string][]string{
 	"login":               {"token"},
 	"health repair":       {"type"},
@@ -162,6 +165,19 @@ func collectFlags(set *pflag.FlagSet, requiredNames []string) []FlagSpec {
 	set.VisitAll(func(f *pflag.Flag) {
 		if f.Hidden {
 			return
+		}
+		// Cobra already knows which flags are required — `MarkFlagRequired`
+		// records it on the flag. Ask IT, and treat `requiredNames` as a
+		// supplement for the handful enforced by hand inside RunE.
+		//
+		// The map used to be the only source, and it drifted exactly the way a
+		// hand-maintained mirror of the code always does: eight commands
+		// (every `assets` subcommand, and one added the same afternoon) told
+		// agents a flag was optional while the command refused without it. An
+		// agent cannot see why that call failed.
+		if a, ok := f.Annotations[cobra.BashCompOneRequiredFlag]; ok &&
+			len(a) > 0 && a[0] == "true" {
+			required[f.Name] = true
 		}
 		out = append(out, FlagSpec{
 			Name:        f.Name,
