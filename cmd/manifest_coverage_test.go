@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
 )
 
 // The agent manifest is the contract agents read to discover what this CLI can
@@ -40,6 +41,31 @@ func manifestNames(t *testing.T) map[string]map[string]bool {
 			flags[f.Name] = true
 		}
 		out[c.Name] = flags
+	}
+	return out
+}
+
+// required flags AS THE MANIFEST DECLARES THEM — the bit an agent reads.
+func manifestRequired(t *testing.T) map[string]map[string]bool {
+	t.Helper()
+	root := NewRootCmd("test")
+	var sb strings.Builder
+	if err := EmitManifest(&sb, root, "test"); err != nil {
+		t.Fatalf("EmitManifest: %v", err)
+	}
+	var m Manifest
+	if err := json.Unmarshal([]byte(sb.String()), &m); err != nil {
+		t.Fatalf("manifest is not valid JSON: %v", err)
+	}
+	out := map[string]map[string]bool{}
+	for _, c := range m.Commands {
+		req := map[string]bool{}
+		for _, f := range c.Flags {
+			if f.Required {
+				req[f.Name] = true
+			}
+		}
+		out[c.Name] = req
 	}
 	return out
 }
@@ -99,4 +125,43 @@ func TestASubcommandDoesNotDisplaceItsParent(t *testing.T) {
 			t.Errorf("%q is missing", pair[1])
 		}
 	}
+}
+
+func TestRequiredFlagsInTheManifestMatchTheRealOnes(t *testing.T) {
+	// The residual risk the walker fix does not cover: `requiredFlags` is a
+	// hand-maintained map. A command can be present in the contract and still
+	// describe itself wrongly — an agent told a flag is optional when the
+	// command refuses without it fails for a reason it cannot see.
+	//
+	// Cobra already knows the truth (MarkFlagRequired sets an annotation), so
+	// this compares the manifest against the command tree rather than against
+	// another hand-written list.
+	got := manifestRequired(t)
+
+	var walk func(c *cobra.Command, prefix string)
+	walk = func(c *cobra.Command, prefix string) {
+		for _, sub := range c.Commands() {
+			if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" {
+				continue
+			}
+			name := strings.TrimSpace(prefix + " " + sub.Name())
+			if sub.Runnable() {
+				var realRequired []string
+				sub.Flags().VisitAll(func(f *pflag.Flag) {
+					if a, ok := f.Annotations[cobra.BashCompOneRequiredFlag]; ok &&
+						len(a) > 0 && a[0] == "true" {
+						realRequired = append(realRequired, f.Name)
+					}
+				})
+				for _, r := range realRequired {
+					if !got[name][r] {
+						t.Errorf("%q requires --%s but the manifest does not say so",
+							name, r)
+					}
+				}
+			}
+			walk(sub, name)
+		}
+	}
+	walk(NewRootCmd("test"), "")
 }
