@@ -1,0 +1,45 @@
+name: test
+
+# Until this existed, `release.yml` was the ONLY workflow in this repo: nothing
+# ran on a push or a pull request, so a tag could publish six binaries whose
+# tests had been run by no one but their author, on one machine. This closes
+# that hole at the two moments it matters — before a merge, and before a tag.
+#
+# Go version is pinned to the same "1.22" goreleaser builds with, so a change
+# that compiles here cannot fail in the release job.
+
+on:
+  push:
+    branches: ["main"]
+    tags: ["v*.*.*"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          check-latest: true
+
+      - name: Build
+        run: go build ./...
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        # The update check reaches GitHub at most once a day and fails silently
+        # when it cannot. Disabled here anyway: a rate-limited runner must never
+        # be able to turn a green suite red for a reason unrelated to the code.
+        env:
+          BLENAU_NO_UPDATE_CHECK: "1"
+        run: go test ./... -count=1
