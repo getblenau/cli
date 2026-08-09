@@ -33,10 +33,21 @@ type CommandSpec struct {
 	Flags       []FlagSpec `json:"flags,omitempty"`
 }
 
+// UpdateInfo answers, for an agent introspecting this binary, the question the
+// command list alone cannot: "is this contract the CURRENT one?". Without it a
+// missing command is indistinguishable from a command that never existed.
+// Omitted entirely when the check is opted out of or GitHub is unreachable —
+// absent means "unknown", never "up to date".
+type UpdateInfo struct {
+	LatestVersion string `json:"latest_version"`
+	Stale         bool   `json:"stale"`
+}
+
 // Manifest is the top-level agent contract.
 type Manifest struct {
 	Name        string        `json:"name"`
 	Version     string        `json:"version"`
+	Update      *UpdateInfo   `json:"update,omitempty"`
 	Commands    []CommandSpec `json:"commands"`
 	GlobalFlags []FlagSpec    `json:"global_flags,omitempty"`
 }
@@ -239,9 +250,17 @@ func BuildManifest(root *cobra.Command, version string) Manifest {
 }
 
 // EmitManifest writes the manifest as indented JSON to w.
+//
+// The staleness lookup lives HERE and not in BuildManifest so the manifest
+// builder stays pure: the coverage tests call BuildManifest directly and must
+// never reach the network to do it.
 func EmitManifest(w io.Writer, root *cobra.Command, version string) error {
+	m := BuildManifest(root, version)
+	if latest, stale := UpdateAvailable(version); latest != "" {
+		m.Update = &UpdateInfo{LatestVersion: latest, Stale: stale}
+	}
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
 	enc.SetEscapeHTML(false)
-	return enc.Encode(BuildManifest(root, version))
+	return enc.Encode(m)
 }
