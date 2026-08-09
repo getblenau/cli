@@ -58,6 +58,61 @@ func NotifyIfUpdateAvailable(current string, stderr *os.File) {
 		latest, current)
 }
 
+// UpdateAvailable reports the latest release tag and whether `current` is
+// behind it. This is the NON-TTY half of NotifyIfUpdateAvailable.
+//
+// That function returns early when stderr is not a terminal, so scripts, CI and
+// agents never see the notice. For a human that silence is right — a human who
+// runs a command that no longer exists reads the error and thinks "maybe I'm
+// old". An agent does not: it reads "unknown command" and concludes the
+// capability does not exist, then reports that as fact and stops. It is the one
+// caller with no way to suspect its own binary, and the only one the notice was
+// withheld from.
+//
+// So the same fact is offered through the two channels an agent actually reads
+// — the `--agent-manifest` contract and the unknown-command error — while the
+// interactive notice stays exactly as it was. Same opt-out
+// (BLENAU_NO_UPDATE_CHECK), same 24h cache, same silent failure when offline.
+func UpdateAvailable(current string) (latest string, stale bool) {
+	if os.Getenv("BLENAU_NO_UPDATE_CHECK") != "" {
+		return "", false
+	}
+	latest = cachedLatestRelease()
+	if latest == "" {
+		return "", false
+	}
+	return latest, isNewer(latest, current)
+}
+
+// OutdatedBinaryHint returns the line to append to `err` when the error is the
+// kind an outdated binary produces AND this binary is in fact outdated. Returns
+// "" otherwise — including when the version check is opted out of or offline,
+// because a guess here would be worse than silence.
+//
+// Scoped to unknown command/flag errors on purpose. Every other failure (auth,
+// network, a 404 from the API) has its own explanation, and appending a version
+// notice to those would train the reader to ignore it.
+func OutdatedBinaryHint(current string, err error) string {
+	if err == nil {
+		return ""
+	}
+	msg := strings.ToLower(err.Error())
+	if !strings.Contains(msg, "unknown command") &&
+		!strings.Contains(msg, "unknown flag") &&
+		!strings.Contains(msg, "unknown shorthand flag") {
+		return ""
+	}
+	latest, stale := UpdateAvailable(current)
+	if !stale {
+		return ""
+	}
+	return fmt.Sprintf(
+		"\nThis binary is v%s and %s is available, so this may exist in the newer\n"+
+			"release rather than not exist at all. Check before concluding otherwise:\n"+
+			"  blenau update\n",
+		current, latest)
+}
+
 // cachedLatestRelease returns the latest release tag, hitting GitHub at most
 // once per updateCheckInterval and caching the result next to config.json.
 func cachedLatestRelease() string {
