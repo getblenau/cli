@@ -101,6 +101,37 @@ func TestUpdateCheckOptOutSilencesEveryChannel(t *testing.T) {
 	}
 }
 
+func TestDevBuildIsNeverReportedAsBehind(t *testing.T) {
+	seedUpdateCache(t, "v0.20.0")
+
+	// A binary built from main is AHEAD of every release, not behind it. The
+	// previous shape of this — a hard-coded "latest" version in main.go — made
+	// exactly this claim, because the constant can only ever name the release
+	// before the tag that ships it.
+	latest, stale := UpdateAvailable(DevVersion)
+	if latest != "v0.20.0" {
+		t.Errorf("dev build should still learn the current release, got %q", latest)
+	}
+	if stale {
+		t.Error("a dev build must never be reported as stale")
+	}
+
+	if got := OutdatedBinaryHint(DevVersion, errors.New(`unknown command "teleport"`)); got != "" {
+		t.Errorf("dev build must not get the outdated hint, got: %q", got)
+	}
+
+	for _, v := range []string{"0.0.0-dev", "0.0.0", "1.2.3-dev"} {
+		if !IsDevBuild(v) {
+			t.Errorf("IsDevBuild(%q) = false, want true", v)
+		}
+	}
+	for _, v := range []string{"0.16.0", "1.0.0", "0.17.0"} {
+		if IsDevBuild(v) {
+			t.Errorf("IsDevBuild(%q) = true, want false", v)
+		}
+	}
+}
+
 func TestUpdateAvailableReportsBehindAndCurrent(t *testing.T) {
 	seedUpdateCache(t, "v0.20.0")
 

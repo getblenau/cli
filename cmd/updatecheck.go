@@ -81,7 +81,23 @@ func UpdateAvailable(current string) (latest string, stale bool) {
 	if latest == "" {
 		return "", false
 	}
+	// A dev build is not behind — it is ahead of every release, or at least
+	// unrelated to them. Reporting the tag is still useful (it says what the
+	// current release is); claiming staleness would be a lie.
+	if IsDevBuild(current) {
+		return latest, false
+	}
 	return latest, isNewer(latest, current)
+}
+
+// DevVersion is the version string a binary built without -ldflags carries.
+const DevVersion = "0.0.0-dev"
+
+// IsDevBuild reports whether `v` came from a plain `go build` rather than a
+// release. Such a binary has no meaningful version to compare, so every
+// staleness signal must stay silent for it.
+func IsDevBuild(v string) bool {
+	return strings.Contains(v, "dev") || strings.HasPrefix(v, "0.0.0")
 }
 
 // OutdatedBinaryHint returns the line to append to `err` when the error is the

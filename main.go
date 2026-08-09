@@ -16,10 +16,17 @@ import (
 )
 
 // version is overridden at build time via -ldflags "-X main.version=..."
-// (see .goreleaser.yml). This default is what a plain `go build` produces, and
-// it must track the latest tag: the outdated-binary hint PRINTS this string, so
-// a stale default makes every locally built binary announce itself as behind.
-var version = "0.16.0"
+// (see .goreleaser.yml). A release binary always carries its real tag.
+//
+// The fallback is a SENTINEL, not a release number. Hard-coding the latest tag
+// here looks tidier and is a trap: the value can only ever be the release
+// BEFORE the tag that ships it, so a binary built from main — which is ahead of
+// every release — would announce itself as behind. It is one more hand-copy of
+// a fact that lives somewhere else, and hand-copies here drift.
+//
+// cmd.IsDevBuild recognises this string and suppresses the staleness claim: a
+// dev build's version is unknown, and unknown must never be reported as "old".
+var version = cmd.DevVersion
 
 func main() {
 	setUTF8Stdout()
