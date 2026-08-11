@@ -54,6 +54,7 @@ func NewRootCmd(version string) *cobra.Command {
 	root.AddCommand(NewSuggestCrosslinksCmd())
 	root.AddCommand(NewUpdateCmd())
 	root.AddCommand(NewConceptCmd())
+	root.AddCommand(NewPublishCmd())
 
 	return root
 }
