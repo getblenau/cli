@@ -16,6 +16,12 @@ func NewRootCmd(version string) *cobra.Command {
 			return cmd.Help()
 		},
 		SilenceUsage: true,
+		// main() prints the error itself, because it also appends the
+		// outdated-binary hint that turns "unknown command" back into a next
+		// step. Without this, Cobra prints the error too and EVERY failing
+		// command emits its message twice — which reads like two separate
+		// problems and makes an agent parsing stderr see a phantom.
+		SilenceErrors: true,
 	}
 
 	root.PersistentFlags().Bool("json", false, "Emit JSON output (default for non-TTY).")

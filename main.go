@@ -50,7 +50,10 @@ func main() {
 	// notice on stderr (only for interactive humans; scripts/agents never see it).
 	cmd.NotifyIfUpdateAvailable(version, os.Stderr)
 	if err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		// The ONLY place a command error is printed (root sets SilenceErrors
+		// so Cobra does not print it as well). Keeps Cobra's "Error: " prefix
+		// so the output a user sees is unchanged, minus the duplicate.
+		fmt.Fprintln(os.Stderr, "Error:", err)
 		// "unknown command" is the one error an outdated binary reports as a
 		// fact about the PRODUCT rather than about itself. A human shrugs and
 		// checks their version; an agent writes down "this capability does not
