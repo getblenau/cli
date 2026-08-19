@@ -62,6 +62,8 @@ func NewRootCmd(version string) *cobra.Command {
 	root.AddCommand(NewConceptCmd())
 	root.AddCommand(NewPlaybooksCmd())
 	root.AddCommand(NewPublishCmd())
+	root.AddCommand(NewAccessCmd())
+	root.AddCommand(NewDelegationCmd())
 
 	return root
 }
