@@ -69,6 +69,13 @@ Examples:
 						Status     string `json:"status"`
 						SourceType string `json:"source_type"`
 					} `json:"documents"`
+					// Which "nothing" this is. A connected repo with no
+					// documents used to print the same "No documents." as a
+					// prefix that does not exist, so the reader concluded the
+					// path was gone.
+					PrefixStatus  string   `json:"prefix_status"`
+					PrefixDetail  string   `json:"prefix_detail"`
+					KnownPrefixes []string `json:"known_prefixes"`
 				}
 				if err := json.Unmarshal(b, &resp); err != nil {
 					cmd.OutOrStdout().Write(norm.NFC.Bytes(b))
@@ -76,7 +83,18 @@ Examples:
 				}
 				w := cmd.OutOrStdout()
 				if len(resp.Documents) == 0 {
-					fmt.Fprintln(w, "No documents.")
+					switch resp.PrefixStatus {
+					case "connected_but_empty":
+						fmt.Fprintln(w, "No documents here yet — but the path exists.")
+						fmt.Fprintln(w, norm.NFC.String(resp.PrefixDetail))
+					case "unknown_prefix":
+						fmt.Fprintln(w, norm.NFC.String(resp.PrefixDetail))
+						for _, p := range resp.KnownPrefixes {
+							fmt.Fprintln(w, "  "+norm.NFC.String(p))
+						}
+					default:
+						fmt.Fprintln(w, "No documents.")
+					}
 					return nil
 				}
 				for _, d := range resp.Documents {
