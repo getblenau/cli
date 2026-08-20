@@ -43,6 +43,8 @@ func NewRootCmd(version string) *cobra.Command {
 	root.AddCommand(NewSearchCmd())
 	root.AddCommand(NewWorkspacesCmd())
 	root.AddCommand(NewReposCmd())
+	root.AddCommand(NewAgentTokenCmd())
+	root.AddCommand(NewAgentAccessCmd())
 	root.AddCommand(NewDocsCmd())
 	root.AddCommand(NewIngestCmd())
 	root.AddCommand(NewEditSectionCmd())
