@@ -82,11 +82,17 @@ Examples:
 			}
 
 			// 2. Echo the RESOLVED identity (what will actually be deleted).
+			//    This is prose for the human about to confirm; in machine mode it
+			//    is suppressed (the caller named the path, and --json promises
+			//    JSON and nothing else) — never the confirmation itself, which
+			//    still fails closed below.
 			errw := cmd.ErrOrStderr()
-			fmt.Fprintf(errw, "Document to delete:\n")
-			fmt.Fprintf(errw, "  path:        %s\n", norm.NFC.String(doc.Path))
-			fmt.Fprintf(errw, "  title:       %s\n", norm.NFC.String(doc.Title))
-			fmt.Fprintf(errw, "  source_type: %s\n", norm.NFC.String(doc.SourceType))
+			if !machineOutput {
+				fmt.Fprintf(errw, "Document to delete:\n")
+				fmt.Fprintf(errw, "  path:        %s\n", norm.NFC.String(doc.Path))
+				fmt.Fprintf(errw, "  title:       %s\n", norm.NFC.String(doc.Title))
+				fmt.Fprintf(errw, "  source_type: %s\n", norm.NFC.String(doc.SourceType))
+			}
 
 			// 3. Dry-run: report the plan, change nothing.
 			if dryRun {
