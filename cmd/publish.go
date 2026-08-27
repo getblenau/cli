@@ -293,6 +293,11 @@ Examples:
 					Visibility  string `json:"visibility"`
 					Address     string `json:"address"`
 					RequiresKey bool   `json:"requires_key"`
+					// The complete, openable link — present only when this
+					// credential may hold one. Absent means "not for you",
+					// never "there isn't one": Address alone 404s for an
+					// unlisted document.
+					ShareableURL string `json:"shareable_url"`
 				}
 				_ = json.Unmarshal(b, &s)
 				w := cmd.OutOrStdout()
@@ -300,12 +305,25 @@ Examples:
 					fmt.Fprintf(w, "Not published.\n")
 					return nil
 				}
-				if s.Visibility == "public" {
-					fmt.Fprintf(w, "Public and indexable:\n  %s\n", norm.NFC.String(s.Address))
-				} else {
-					fmt.Fprintf(w, "Shared by link:\n  %s\n", norm.NFC.String(s.Address))
-					fmt.Fprintf(w, "  (needs its key — `blenau publish list` prints the full URL)\n")
+				share := s.ShareableURL
+				if share == "" {
+					share = s.Address
 				}
+				if s.Visibility == "public" {
+					fmt.Fprintf(w, "Public and indexable:\n  %s\n", norm.NFC.String(share))
+					return nil
+				}
+				if s.ShareableURL != "" {
+					fmt.Fprintf(w, "Shared by link:\n  %s\n", norm.NFC.String(s.ShareableURL))
+					fmt.Fprintf(w, "\nThe key in that URL is what makes it work — share the whole address.\n")
+					return nil
+				}
+				// Say what this is and what to do, and do NOT point at
+				// `publish list`: that is admin-only, so the one reader who
+				// needs this hint is the one who cannot follow it.
+				fmt.Fprintf(w, "Shared by link:\n  %s\n", norm.NFC.String(s.Address))
+				fmt.Fprintf(w, "\nThat address is NOT the link — it ends in a secret key your\n"+
+					"credential is not given. Ask a workspace admin to send you the full URL.\n")
 				return nil
 			})
 		},
