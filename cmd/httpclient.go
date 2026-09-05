@@ -126,6 +126,41 @@ func jsonFlag(cmd *cobra.Command) bool {
 	return !isTerminal(os.Stdout)
 }
 
+// machineOutput reports whether the caller EXPLICITLY asked for JSON. It is
+// fixed once in the root's PersistentPreRun so code with no `*cobra.Command` in
+// scope (apiRequest's workspace notices) can honour it.
+//
+// `--json` used to govern stdout ONLY, while the progress notes kept going to
+// stderr — technically the Unix convention, but the flag's own help says
+// "instead of human format", and a caller that merged the two streams got four
+// lines of prose in front of its JSON and a parse error. With --json the prose
+// is now not written at all, on either stream.
+//
+// Deliberately NOT `jsonFlag`: that one also returns true when stdout merely
+// isn't a TTY, and there the human is still watching stderr while stdout goes to
+// a file. Silencing the echo of what is about to be deleted, for someone who
+// never asked for machine output, would remove a safety signal and buy nothing —
+// their stdout is already clean JSON either way.
+//
+// Never suppressed: real errors, and `confirmWrite`'s announcement — that one is
+// part of a guard that either prompts or fails closed, and silencing it would
+// hide a cross-workspace write.
+var machineOutput bool
+
+// setMachineOutput fixes machine mode for this invocation.
+func setMachineOutput(cmd *cobra.Command) { machineOutput = jsonFlagExplicit(cmd) }
+
+// jsonFlagExplicit is jsonFlag minus the non-TTY inference: true only when
+// --json was actually passed (on the subcommand or as the root's persistent
+// flag).
+func jsonFlagExplicit(cmd *cobra.Command) bool {
+	if asJSON, _ := cmd.Flags().GetBool("json"); cmd.Flags().Changed("json") {
+		return asJSON
+	}
+	pj, _ := cmd.Root().PersistentFlags().GetBool("json")
+	return pj
+}
+
 // isTerminal reports whether f is a terminal (character device).
 func isTerminal(f *os.File) bool {
 	fi, err := f.Stat()
@@ -176,7 +211,7 @@ func apiRequest(method, path string, bodyReader io.Reader, contentType string) (
 				if err := confirmWrite(target, anchor); err != nil {
 					return nil, 0, err
 				}
-			} else {
+			} else if !machineOutput {
 				fmt.Fprintf(os.Stderr, "→ writing to %s\n", target.Name)
 			}
 		}
@@ -208,7 +243,9 @@ func apiRequest(method, path string, bodyReader io.Reader, contentType string) (
 		if err := verifyWorkspaceEcho(raw, target.ID); err != nil {
 			return raw, resp.StatusCode, err
 		}
-		fmt.Fprintf(os.Stderr, "✓ wrote to %s\n", target.Name)
+		if !machineOutput {
+			fmt.Fprintf(os.Stderr, "✓ wrote to %s\n", target.Name)
+		}
 	}
 	return raw, resp.StatusCode, nil
 }

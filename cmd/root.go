@@ -15,6 +15,14 @@ func NewRootCmd(version string) *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return cmd.Help()
 		},
+		// Cobra runs the closest PersistentPreRun to the command being executed,
+		// and this is the only one in the tree — so every subcommand passes
+		// through here. It fixes machine mode for code that has no *cobra.Command
+		// to ask (apiRequest's workspace notices), so an explicit --json means
+		// "JSON and nothing else" on BOTH streams, as its help has always claimed.
+		PersistentPreRun: func(cmd *cobra.Command, args []string) {
+			setMachineOutput(cmd)
+		},
 		SilenceUsage: true,
 		// main() prints the error itself, because it also appends the
 		// outdated-binary hint that turns "unknown command" back into a next

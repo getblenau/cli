@@ -215,3 +215,69 @@ func TestDocsDeleteDBOnlyNeedsOverrideErrorIsFormatted(t *testing.T) {
 		t.Fatalf("expected irrecoverable override error, got: %v", err)
 	}
 }
+
+// --json is a machine contract: the ONLY thing on either stream is the JSON
+// document. It used to emit the resolved-identity echo to stderr anyway, so a
+// caller that merged the streams got four lines of prose in front of its JSON
+// and a parse error. The harness points both streams at one buffer, which is
+// exactly that caller.
+func TestDocsDeleteJSONEmitsNothingButJSON(t *testing.T) {
+	byPath := `{"path":"eng/legacy.md","title":"Legacy","source_type":"github"}`
+	del := `{"status":"deleted","commit_sha":"abc123","db_only":false,"repo":"acme/x"}`
+	srv := docsDeleteServer(t, 200, byPath, 200, del, nil)
+	defer srv.Close()
+
+	out, err := runDocsDelete(t, srv, "--path", "eng/legacy.md", "--yes", "--json")
+	if err != nil {
+		t.Fatalf("delete --json: %v", err)
+	}
+	var parsed map[string]interface{}
+	if e := json.Unmarshal([]byte(strings.TrimSpace(out)), &parsed); e != nil {
+		t.Fatalf("combined output is not parseable JSON (%v):\n%s", e, out)
+	}
+	if parsed["status"] != "deleted" {
+		t.Fatalf("wrong payload: %v", parsed)
+	}
+	if strings.Contains(out, "Document to delete") {
+		t.Fatalf("human echo leaked into --json output:\n%s", out)
+	}
+}
+
+// Same for the preview: --dry-run --json is how a caller asks "what would this
+// do" programmatically.
+func TestDocsDeleteDryRunJSONEmitsNothingButJSON(t *testing.T) {
+	byPath := `{"path":"eng/x.md","title":"X","source_type":"manual"}`
+	plan := `{"status":"dry_run","file_on_default_branch":true,"would_delete_github":true,"db_only":false}`
+	srv := docsDeleteServer(t, 200, byPath, 200, plan, nil)
+	defer srv.Close()
+
+	out, err := runDocsDelete(t, srv, "--path", "eng/x.md", "--dry-run", "--json")
+	if err != nil {
+		t.Fatalf("dry-run --json: %v", err)
+	}
+	var parsed map[string]interface{}
+	if e := json.Unmarshal([]byte(strings.TrimSpace(out)), &parsed); e != nil {
+		t.Fatalf("combined output is not parseable JSON (%v):\n%s", e, out)
+	}
+	if parsed["status"] != "dry_run" {
+		t.Fatalf("wrong payload: %v", parsed)
+	}
+}
+
+// Without --json the echo stays, even though `go test` gives us a non-TTY
+// stdout: the human piping stdout to a file is still reading stderr, and the
+// point of the echo is that they see WHAT is about to be deleted.
+func TestDocsDeleteEchoSurvivesInferredNonTTY(t *testing.T) {
+	byPath := `{"path":"eng/legacy.md","title":"Legacy","source_type":"github"}`
+	del := `{"status":"deleted","commit_sha":"abc123","db_only":false,"repo":"acme/x"}`
+	srv := docsDeleteServer(t, 200, byPath, 200, del, nil)
+	defer srv.Close()
+
+	out, err := runDocsDelete(t, srv, "--path", "eng/legacy.md", "--yes")
+	if err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+	if !strings.Contains(out, "Document to delete") {
+		t.Fatalf("echo suppressed without an explicit --json:\n%s", out)
+	}
+}
