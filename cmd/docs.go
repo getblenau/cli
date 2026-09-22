@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/url"
+	"strconv"
 
 	"github.com/spf13/cobra"
 	"golang.org/x/text/unicode/norm"
@@ -162,6 +163,13 @@ func newDocsSectionCmd() *cobra.Command {
 				return fmt.Errorf("--heading is required")
 			}
 			path := "/knowledge/section/" + escapePath(p) + "?heading=" + url.QueryEscape(heading)
+			// A duplicated heading needs its occurrence, or the version you get
+			// back locks the WRONG section and the write is refused as a
+			// mismatch with no way to tell which one you actually read.
+			if cmd.Flags().Changed("position") {
+				pos, _ := cmd.Flags().GetInt("position")
+				path += "&position=" + strconv.Itoa(pos)
+			}
 			raw, status, err := apiCall("GET", path, nil)
 			if err != nil {
 				return err
@@ -173,6 +181,7 @@ func newDocsSectionCmd() *cobra.Command {
 		},
 	}
 	c.Flags().String("heading", "", "Heading text to fetch.")
+	c.Flags().Int("position", 0, "Occurrence (1-based) to disambiguate a duplicated heading.")
 	return c
 }
 

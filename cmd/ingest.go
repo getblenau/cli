@@ -23,6 +23,11 @@ func NewIngestCmd() *cobra.Command {
 Single doc: pass --path and --title; content comes from --content-file or stdin.
 Optionally --auto-link crosslinks and attach provenance with --source type=ref.
 
+A path that ALREADY EXISTS is replaced in full — same path, new content, whole
+document. That is how you reorder or rewrite one wholesale; --dry-run first and
+read the diff, because everything you do not send is what leaves the document.
+To change one part instead, use edit-section / patch-section / rename-section.
+
 Bulk (CLI-only): pass --dir to walk a local folder and ingest every .md file in
 one shot (batched, server cap 200 per call). Each file's brain path mirrors its
 path relative to --dir, optionally under --prefix; the title is derived from the
@@ -32,7 +37,9 @@ tree — something an in-browser agent cannot do because it has no local files.
 Examples:
   blenau ingest --path docs/auth/oauth.md --title "OAuth" --content-file oauth.md
   cat notes.md | blenau ingest --path docs/notes.md --title "Notes"
-  blenau ingest --dir ./docs --prefix handbook/`,
+  blenau ingest --dir ./docs --prefix handbook/
+  blenau docs get docs/x.md --json | jq -r .raw > x.md   # edit x.md, then replace:
+  blenau ingest --path docs/x.md --title "X" --content-file x.md --dry-run`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if dir, _ := cmd.Flags().GetString("dir"); dir != "" {
 				return runIngestDir(cmd, dir)
